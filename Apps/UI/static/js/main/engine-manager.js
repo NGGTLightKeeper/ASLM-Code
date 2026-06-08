@@ -1,0 +1,1106 @@
+// Copyright NGGT.LightKeeper. All Rights Reserved.
+
+import { getJson, postJson } from './api.js';
+import { t } from './i18n.js';
+import { LLM_PARAMETER_OPTION_SETS } from './constants.js';
+import { getEngineAdapter, normalizeEngineValue } from '../engines/engine-registry.js';
+import { isLocalHostname, normalizeAddressForParsing } from './utils.js';
+
+// Engine manager.
+// Create the runtime controller for engine selection, model loading, and presets.
+export function createEngineManager(context, dependencies) {
+  const { attachmentsUi, parametersUi } = dependencies;
+  const { dom, state } = context;
+  const LAST_MODEL_STORAGE_KEY = 'aslm.lastModelByEngine';
+
+  // Last-model persistence helpers.
+  // Read the serialized map of last selected models by engine.
+  function readLastModelMap() {
+    try {
+      const raw = window.localStorage.getItem(LAST_MODEL_STORAGE_KEY);
+      if (!raw) {
+        return {};
+      }
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_error) {
+      return {};
+    }
+  }
+
+  // Persist one model as the latest selection for one engine.
+  function rememberLastModel(engine, modelName) {
+    const normalizedEngine = normalizeEngineValue(engine);
+    const normalizedModel = String(modelName || '').trim();
+    if (!normalizedEngine || !normalizedModel) {
+      return;
+    }
+
+    const nextMap = readLastModelMap();
+    nextMap[normalizedEngine] = normalizedModel;
+    try {
+      window.localStorage.setItem(LAST_MODEL_STORAGE_KEY, JSON.stringify(nextMap));
+    } catch (_error) {
+      // Ignore storage failures in privacy-restricted contexts.
+    }
+  }
+
+  // Read the latest remembered model for one engine.
+  function getRememberedLastModel(engine) {
+    const normalizedEngine = normalizeEngineValue(engine);
+    const modelMap = readLastModelMap();
+    return String(modelMap[normalizedEngine] || '').trim();
+  }
+
+  // Active selection helpers.
+  // Read the active facade engine in canonical form.
+  function getActiveEngine() {
+    return normalizeEngineValue(state.activeEngine);
+  }
+
+  // Return whether the active facade delegates inference to ASLM-Chat.
+  function usesAslmChatFacade() {
+    return getActiveEngine() === 'aslm-chat';
+  }
+
+  // Read the backend engine used for model/tool API calls.
+  function getActiveBackendEngine() {
+    if (usesAslmChatFacade()) {
+      return normalizeEngineValue(
+        state.activeSubEngine
+        || state.runtimeSettings['llm-sub-engine']
+        || dom.$subEngineSelector.val()
+        || 'ollama-service'
+      );
+    }
+    return getActiveEngine();
+  }
+
+  // Resolve the adapter used for backend-specific preset controls.
+  function getBackendEngineAdapter() {
+    return getEngineAdapter(getActiveBackendEngine());
+  }
+
+  // Update the ASLM-Chat connectivity status line.
+  function setChatBackendStatus(message, tone) {
+    if (!dom.$chatBackendStatus || !dom.$chatBackendStatus.length) {
+      return;
+    }
+    dom.$chatBackendStatus.text(message || '');
+    dom.$chatBackendStatus.removeClass('status-ok status-error status-pending');
+    if (tone) {
+      dom.$chatBackendStatus.addClass(`status-${tone}`);
+    }
+  }
+
+  // Render the sub-engine selector options.
+  function renderSubEngineOptions(options, selectedEngine) {
+    if (!dom.$subEngineSelector || !dom.$subEngineSelector.length) {
+      return;
+    }
+    dom.$subEngineSelector.empty();
+    (options || []).forEach(function appendOption(entry) {
+      const engineId = String(entry.id || '').trim();
+      if (!engineId) {
+        return;
+      }
+      const $option = $('<option>').val(engineId).text(entry.label || engineId);
+      if (engineId === selectedEngine) {
+        $option.prop('selected', true);
+      }
+      dom.$subEngineSelector.append($option);
+    });
+  }
+
+  // Ask the backend to start ASLM-Chat and refresh sub-engine options.
+  async function ensureChatBackend() {
+    if (!usesAslmChatFacade()) {
+      return null;
+    }
+
+    setChatBackendStatus(t('settings.chatBackendChecking'), 'pending');
+    try {
+      const payload = await postJson('/api/chat_backend/ensure/', {});
+      if (payload && Array.isArray(payload.sub_engine_options) && payload.sub_engine_options.length > 0) {
+        renderSubEngineOptions(payload.sub_engine_options, getActiveBackendEngine());
+      }
+      setChatBackendStatus(t('settings.chatBackendConnected'), 'ok');
+      return payload;
+    } catch (error) {
+      setChatBackendStatus(t('settings.chatBackendUnavailable'), 'error');
+      throw error;
+    }
+  }
+
+  // Toggle sub-engine controls for the active facade engine.
+  function updateSubEngineUi() {
+    const showSubEngine = usesAslmChatFacade();
+    if (dom.$subEngineGroup && dom.$subEngineGroup.length) {
+      dom.$subEngineGroup.toggle(showSubEngine);
+    }
+  }
+
+  // Read the currently selected model name.
+  function getSelectedModelName() {
+    return String(dom.$modelSelector.val() || '').trim();
+  }
+
+  // Resolve the active preset record from the preset state.
+  function getActivePreset() {
+    return (state.presetState.presets || []).find(function findPreset(preset) {
+      return preset.id === state.presetState.activePresetId;
+    }) || null;
+  }
+
+
+  // Capability state helpers.
+  // Reset the thinking state to the default unsupported values.
+  function resetThinkState() {
+    state.thinkState.supported = false;
+    state.thinkState.paramName = 'think';
+    state.thinkState.toggleSupported = false;
+    state.thinkState.enabled = true;
+    state.thinkState.levelSupported = false;
+    state.thinkState.levelParamName = 'think_level';
+    state.thinkState.levelOptions = [];
+    state.thinkState.level = '';
+  }
+
+  // Reset the preset UI and in-memory preset metadata.
+  function resetPresetUi() {
+    state.presetState = {
+      engine: '',
+      model: '',
+      activePresetId: '',
+      presets: []
+    };
+    dom.$presetSelector.empty().append('<option value="">Default</option>');
+    dom.$presetGroup.hide();
+    dom.$presetRenameBtn.prop('disabled', true);
+    dom.$presetDeleteBtn.prop('disabled', true);
+  }
+
+  // Apply preset payload data to the preset selector controls.
+  function applyPresetState(payload) {
+    const activeEngine = getActiveBackendEngine();
+    if (!payload || !getEngineAdapter(activeEngine).supportsPresets || !getSelectedModelName()) {
+      resetPresetUi();
+      return;
+    }
+
+    state.presetState = {
+      engine: activeEngine,
+      model: payload.model || getSelectedModelName(),
+      activePresetId: payload.active_preset_id || '',
+      presets: Array.isArray(payload.presets) ? payload.presets : []
+    };
+
+    dom.$presetSelector.empty();
+    state.presetState.presets.forEach(function appendPreset(preset) {
+      const label = preset.is_default ? `${preset.name} (Default)` : preset.name;
+      const $option = $('<option>').val(preset.id).text(label);
+      if (preset.id === state.presetState.activePresetId) {
+        $option.prop('selected', true);
+      }
+      dom.$presetSelector.append($option);
+    });
+
+    const activePreset = getActivePreset();
+    const isDefaultPreset = !activePreset || !!activePreset.is_default;
+    dom.$presetRenameBtn.prop('disabled', isDefaultPreset);
+    dom.$presetDeleteBtn.prop('disabled', isDefaultPreset);
+    dom.$presetGroup.show();
+  }
+
+
+  // Endpoint helpers.
+  // Resolve the runtime setting key used for an engine address.
+  function getEngineAddressKey(engine) {
+    return getEngineAdapter(engine).addressKey || null;
+  }
+
+  // Read the saved engine address from runtime settings.
+  function getEngineAddress(engine) {
+    const key = getEngineAddressKey(engine);
+    return key ? (state.runtimeSettings[key] || '') : '';
+  }
+
+  // Resolve the runtime setting key used for an engine API key.
+  function getEngineApiKeyKey(engine) {
+    const canonicalEngine = normalizeEngineValue(engine);
+    const runtimeKeys = state.runtimeSettings.engine_api_key_keys || {};
+    return runtimeKeys[canonicalEngine] || getEngineAdapter(canonicalEngine).apiKeyKey || null;
+  }
+
+  // Report whether the selected engine already has a stored API key.
+  function hasStoredEngineApiKey(engine) {
+    const canonicalEngine = normalizeEngineValue(engine);
+    const engineApiKeys = state.runtimeSettings.engine_api_keys || {};
+    if (typeof engineApiKeys[canonicalEngine] === 'boolean') {
+      return engineApiKeys[canonicalEngine];
+    }
+
+    const legacyFlag = `has_${canonicalEngine.replace(/-/g, '_')}_api_key`;
+    return !!state.runtimeSettings[legacyFlag];
+  }
+
+  // Report whether the configured LM Studio address points to a local host.
+  function isLocalLmsAddress() {
+    const address = normalizeAddressForParsing(getEngineAddress('lms'));
+    if (!address) {
+      return true;
+    }
+
+    try {
+      return isLocalHostname(new URL(address).hostname);
+    } catch (_error) {
+      return true;
+    }
+  }
+
+  // Update the address status badge text and state.
+  function setEngineAddressStatus(text, status) {
+    dom.$engineAddressStatus.text(text || '');
+    dom.$engineAddressStatus.removeClass('is-pending is-error');
+
+    if (status) {
+      dom.$engineAddressStatus.addClass(`is-${status}`);
+    }
+  }
+
+  // Update the API key status badge text and state.
+  function setEngineApiKeyStatus(text, status) {
+    dom.$engineApiKeyStatus.text(text || '');
+    dom.$engineApiKeyStatus.removeClass('is-pending is-error');
+
+    if (status) {
+      dom.$engineApiKeyStatus.addClass(`is-${status}`);
+    }
+  }
+
+  // Rebuild the engine address and API key controls for the active engine.
+  function updateEngineAddressUi() {
+    updateSubEngineUi();
+    const adapter = getBackendEngineAdapter();
+    const addressKey = adapter.addressKey || null;
+    const hasEditableAddress = Boolean(addressKey) && !usesAslmChatFacade();
+    const apiKeyKey = getEngineApiKeyKey(adapter.id);
+    const hasApiKeySupport = Boolean(apiKeyKey) && !usesAslmChatFacade();
+    const hasStoredApiKey = hasApiKeySupport && hasStoredEngineApiKey(adapter.id);
+
+    dom.$engineAddressGroup.toggle(hasEditableAddress);
+    dom.$engineAddressHint.text(adapter.addressHint || 'Configure the selected engine endpoint.');
+    dom.$engineApiKeyGroup.toggle(hasApiKeySupport);
+
+    if (!hasEditableAddress) {
+      setEngineAddressStatus('Managed', null);
+    } else {
+      dom.$engineAddressInput.val(getEngineAddress(adapter.id));
+      setEngineAddressStatus('Saved', null);
+    }
+
+    if (!hasApiKeySupport) {
+      dom.$engineApiKeyEnabled.prop('checked', false);
+      dom.$engineApiKeyInput.val('').hide();
+      setEngineApiKeyStatus('Off', null);
+      return;
+    }
+
+    dom.$engineApiKeyEnabled.prop('checked', hasStoredApiKey);
+    dom.$engineApiKeyInput.val('');
+    dom.$engineApiKeyInput.toggle(hasStoredApiKey);
+    dom.$engineApiKeyInput.attr(
+      'placeholder',
+      hasStoredApiKey ? 'Stored API key. Enter a new one to replace it' : 'Enter a new API key'
+    );
+    setEngineApiKeyStatus(hasStoredApiKey ? 'On' : 'Off', null);
+  }
+
+  // Reset all model-dependent UI state to a neutral placeholder.
+  function resetModelUiState(message) {
+    parametersUi.showModelPlaceholder(message || 'Models load on demand');
+    state.currentModelInfo = null;
+    resetPresetUi();
+    parametersUi.resetDynamicPanels();
+    parametersUi.updateVisibleDividers();
+    state.visionState.supported = false;
+    state.fileState.supported = false;
+    resetThinkState();
+    state.toolState.supported = false;
+    parametersUi.updateAvailableToolServers(state.defaultAvailableToolServers);
+    attachmentsUi.updateAttachmentControls();
+    parametersUi.updateThinkControls();
+    parametersUi.renderToolControls();
+  }
+
+
+  // Model cache helpers.
+  // Drop the cached model list for one engine.
+  function clearModelCache(engine) {
+    delete state.modelsCache[normalizeEngineValue(engine)];
+  }
+
+  // Normalize and de-duplicate a raw model list.
+  function normalizeModelNames(models) {
+    return Array.from(new Set(
+      (Array.isArray(models) ? models : []).map(function normalizeName(modelName) {
+        return String(modelName || '').trim();
+      }).filter(Boolean)
+    ));
+  }
+
+  // Compare two model lists after normalization.
+  function areModelListsEqual(left, right) {
+    const first = normalizeModelNames(left);
+    const second = normalizeModelNames(right);
+    if (first.length !== second.length) {
+      return false;
+    }
+
+    return first.every(function compare(modelName, index) {
+      return modelName === second[index];
+    });
+  }
+
+  // Read the best available model list for one engine.
+  function getAvailableModelsForEngine(engine) {
+    const canonicalEngine = normalizeEngineValue(engine);
+    if (Array.isArray(state.modelsCache[canonicalEngine]) && state.modelsCache[canonicalEngine].length > 0) {
+      return state.modelsCache[canonicalEngine].slice();
+    }
+
+    return dom.$modelSelector.find('option').map(function readOption() {
+      return $(this).val();
+    }).get().filter(Boolean);
+  }
+
+
+  // LM Studio refresh helpers.
+  // Clear the scheduled LM Studio model refresh timer.
+  function clearLmsModelsRefreshTimer() {
+    if (state.lmsModelsRefreshTimer !== null) {
+      window.clearTimeout(state.lmsModelsRefreshTimer);
+      state.lmsModelsRefreshTimer = null;
+    }
+  }
+
+  // Compute the next LM Studio model refresh interval.
+  function getLmsModelsRefreshInterval() {
+    const adapter = getEngineAdapter('lms');
+    if (typeof adapter.getModelRefreshInterval === 'function') {
+      return adapter.getModelRefreshInterval(isLocalLmsAddress());
+    }
+    return isLocalLmsAddress() ? 3000 : 15000;
+  }
+
+  // Schedule the next LM Studio model refresh.
+  function scheduleLmsModelsRefresh(delayMs) {
+    clearLmsModelsRefreshTimer();
+
+    if (getActiveBackendEngine() !== 'lms') {
+      return;
+    }
+
+    const intervalMs = typeof delayMs === 'number' ? delayMs : getLmsModelsRefreshInterval();
+    state.lmsModelsRefreshTimer = window.setTimeout(function triggerRefresh() {
+      refreshLmsModels().catch(function onRefreshError(error) {
+        console.error('Failed to refresh LM Studio models:', error);
+      });
+    }, intervalMs);
+  }
+
+  // Start or stop LM Studio refresh polling based on the active engine.
+  function syncLmsModelsRefresh() {
+    if (getActiveBackendEngine() !== 'lms') {
+      clearLmsModelsRefreshTimer();
+      return;
+    }
+
+    scheduleLmsModelsRefresh();
+  }
+
+
+  // Model list rendering.
+  // Rebuild the model selector and return the chosen model value.
+  function renderModelOptions(models, preferredModel) {
+    const uniqueModels = normalizeModelNames(models);
+    const fallbackModel = uniqueModels[0] || '';
+    const rememberedModel = getRememberedLastModel(getActiveEngine());
+    const selectedModel = uniqueModels.includes(preferredModel)
+      ? preferredModel
+      : (uniqueModels.includes(rememberedModel) ? rememberedModel : fallbackModel);
+
+    dom.$modelSelector.empty();
+
+    if (!uniqueModels.length) {
+      dom.$modelSelector.append('<option value="">No models available</option>');
+      return '';
+    }
+
+    uniqueModels.forEach(function appendModel(modelName) {
+      const $option = $('<option>').val(modelName).text(modelName);
+      if (modelName === selectedModel) {
+        $option.prop('selected', true);
+      }
+      dom.$modelSelector.append($option);
+    });
+
+    return selectedModel;
+  }
+
+  // Fetch the model list for one engine, including Ollama warm-up retry.
+  async function fetchModelsForEngine(engine) {
+    const backendEngine = normalizeEngineValue(engine) === 'aslm-chat'
+      ? getActiveBackendEngine()
+      : normalizeEngineValue(engine || getActiveBackendEngine());
+
+    async function runFetch() {
+      const data = await getJson(`/api/models/?engine=${encodeURIComponent(backendEngine)}`);
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      return data.models || [];
+    }
+
+    const models = await runFetch();
+    if (models.length > 0 || backendEngine !== 'ollama-service') {
+      return models;
+    }
+
+    await new Promise(function waitForWarmup(resolve) {
+      window.setTimeout(resolve, 1200);
+    });
+    return runFetch();
+  }
+
+  // Ensure the active engine has a rendered model list and loaded model info.
+  async function ensureModelsLoadedForActiveEngine(options) {
+    const loadOptions = options || {};
+    const backendEngine = getActiveBackendEngine();
+    const preferredModel = loadOptions.preferredModel || dom.$modelSelector.val() || getRememberedLastModel(backendEngine) || '';
+
+    if (Array.isArray(state.modelsCache[backendEngine]) && state.modelsCache[backendEngine].length > 0) {
+      const selectedModel = renderModelOptions(state.modelsCache[backendEngine], preferredModel);
+      await loadModelInfo(selectedModel);
+      return selectedModel;
+    }
+
+    resetModelUiState('Loading models...');
+    const models = await fetchModelsForEngine(getActiveEngine());
+    state.modelsCache[backendEngine] = models;
+    const selectedModel = renderModelOptions(models, preferredModel);
+    await loadModelInfo(selectedModel);
+    return selectedModel;
+  }
+
+  // Reload models for the active engine after an address or key change.
+  async function refreshActiveEngineModels(options) {
+    const refreshOptions = options || {};
+    const engine = normalizeEngineValue(refreshOptions.engine || getActiveEngine());
+    const preferredModel = Object.prototype.hasOwnProperty.call(refreshOptions, 'preferredModel')
+      ? (refreshOptions.preferredModel || '')
+      : (dom.$modelSelector.val() || '');
+    const selectionVersion = typeof refreshOptions.selectionVersion === 'number'
+      ? refreshOptions.selectionVersion
+      : state.engineSelectionVersion;
+
+    clearModelCache(engine);
+
+    if (selectionVersion !== state.engineSelectionVersion || engine !== getActiveEngine()) {
+      return '';
+    }
+
+    updateEngineAddressUi();
+    resetModelUiState(refreshOptions.loadingMessage || 'Loading models...');
+    return ensureModelsLoadedForActiveEngine({
+      preferredModel
+    });
+  }
+
+
+  // Runtime settings.
+  // Persist one runtime settings patch and refresh local state.
+  async function saveRuntimeSettings(patch) {
+    state.runtimeSettings = await postJson('/api/runtime_settings/', patch);
+    return state.runtimeSettings;
+  }
+
+  // Switch the active engine and rebuild the model-related UI.
+  async function applyEngineSelection(engine, options) {
+    const settingsOptions = options || {};
+    const normalizedEngine = normalizeEngineValue(engine);
+    const selectionVersion = ++state.engineSelectionVersion;
+    state.modelInfoRequestVersion += 1;
+    const previousEngine = state.activeEngine;
+    const autoLoadModels = settingsOptions.autoLoadModels !== false;
+
+    state.activeEngine = normalizedEngine;
+    clearLmsModelsRefreshTimer();
+    dom.$body.data('llm-engine', normalizedEngine);
+    dom.$engineSelector.val(normalizedEngine);
+    updateEngineAddressUi();
+    resetModelUiState('Models load on demand');
+
+    if (usesAslmChatFacade()) {
+      try {
+        await ensureChatBackend();
+      } catch (error) {
+        console.error('Failed to ensure ASLM-Chat backend:', error);
+      }
+    }
+
+    if (settingsOptions.persist === false) {
+      state.runtimeSettings['llm-engine'] = normalizedEngine;
+      clearModelCache(getActiveBackendEngine());
+
+      if (autoLoadModels) {
+        try {
+          await ensureModelsLoadedForActiveEngine({
+            preferredModel: settingsOptions.preferredModel || ''
+          });
+        } catch (error) {
+          console.error('Failed to load models after engine initialization:', error);
+          resetModelUiState('No models available');
+        }
+      }
+      syncLmsModelsRefresh();
+      return;
+    }
+
+    try {
+      state.runtimeSettings = await saveRuntimeSettings({ 'llm-engine': normalizedEngine });
+      state.runtimeSettings['llm-engine'] = normalizedEngine;
+      clearModelCache(getActiveBackendEngine());
+
+      if (usesAslmChatFacade()) {
+        await ensureChatBackend();
+      }
+
+      if (selectionVersion !== state.engineSelectionVersion) {
+        return;
+      }
+
+      updateEngineAddressUi();
+      setEngineAddressStatus(getEngineAddressKey(normalizedEngine) ? 'Saved' : 'Managed', null);
+
+      if (autoLoadModels) {
+        try {
+          await ensureModelsLoadedForActiveEngine({
+            preferredModel: settingsOptions.preferredModel || ''
+          });
+        } catch (error) {
+          console.error('Failed to load models after engine switch:', error);
+          resetModelUiState('No models available');
+        }
+      }
+
+      syncLmsModelsRefresh();
+    } catch (error) {
+      state.activeEngine = previousEngine;
+      state.runtimeSettings['llm-engine'] = previousEngine;
+      dom.$body.data('llm-engine', previousEngine);
+      dom.$engineSelector.val(previousEngine);
+      updateEngineAddressUi();
+      resetModelUiState('Models load on demand');
+      syncLmsModelsRefresh();
+      throw error;
+    }
+  }
+
+
+  // Switch the active ASLM-Chat sub-engine and reload models.
+  async function applySubEngineSelection(subEngine, options) {
+    const settingsOptions = options || {};
+    const normalizedSubEngine = normalizeEngineValue(subEngine);
+    const selectionVersion = ++state.engineSelectionVersion;
+    state.modelInfoRequestVersion += 1;
+    const previousSubEngine = state.activeSubEngine;
+    const autoLoadModels = settingsOptions.autoLoadModels !== false;
+
+    state.activeSubEngine = normalizedSubEngine;
+    dom.$body.data('llm-sub-engine', normalizedSubEngine);
+    dom.$subEngineSelector.val(normalizedSubEngine);
+    updateEngineAddressUi();
+    resetModelUiState('Loading models...');
+
+    try {
+      await ensureChatBackend();
+    } catch (error) {
+      console.error('Failed to ensure ASLM-Chat backend:', error);
+    }
+
+    if (settingsOptions.persist === false) {
+      state.runtimeSettings['llm-sub-engine'] = normalizedSubEngine;
+      clearModelCache(normalizedSubEngine);
+      if (autoLoadModels) {
+        try {
+          await ensureModelsLoadedForActiveEngine({
+            preferredModel: settingsOptions.preferredModel || ''
+          });
+        } catch (error) {
+          console.error('Failed to load models after sub-engine initialization:', error);
+          resetModelUiState('No models available');
+        }
+      }
+      syncLmsModelsRefresh();
+      return;
+    }
+
+    try {
+      state.runtimeSettings = await saveRuntimeSettings({ 'llm-sub-engine': normalizedSubEngine });
+      state.runtimeSettings['llm-sub-engine'] = normalizedSubEngine;
+      clearModelCache(normalizedSubEngine);
+
+      if (selectionVersion !== state.engineSelectionVersion) {
+        return;
+      }
+
+      if (autoLoadModels) {
+        try {
+          await ensureModelsLoadedForActiveEngine({
+            preferredModel: settingsOptions.preferredModel || ''
+          });
+        } catch (error) {
+          console.error('Failed to load models after sub-engine switch:', error);
+          resetModelUiState('No models available');
+        }
+      }
+      syncLmsModelsRefresh();
+    } catch (error) {
+      state.activeSubEngine = previousSubEngine;
+      state.runtimeSettings['llm-sub-engine'] = previousSubEngine;
+      dom.$subEngineSelector.val(previousSubEngine);
+      throw error;
+    }
+  }
+
+  // Refresh the LM Studio model list when polling is active.
+  async function refreshLmsModels() {
+    clearLmsModelsRefreshTimer();
+
+    if (getActiveBackendEngine() !== 'lms') {
+      return;
+    }
+
+    if (state.lmsModelsRefreshInFlight) {
+      scheduleLmsModelsRefresh();
+      return;
+    }
+
+    const refreshVersion = state.engineSelectionVersion;
+    const previousModels = normalizeModelNames(state.modelsCache.lms || getAvailableModelsForEngine('lms'));
+    const previousSelectedModel = getSelectedModelName();
+    const hadRenderedOptions = dom.$modelSelector.children().length > 0;
+
+    state.lmsModelsRefreshInFlight = true;
+
+    try {
+      const refreshedModels = normalizeModelNames(await fetchModelsForEngine('lms'));
+
+      if (refreshVersion !== state.engineSelectionVersion || getActiveBackendEngine() !== 'lms') {
+        return;
+      }
+
+      state.modelsCache.lms = refreshedModels;
+
+      const shouldRerender = !hadRenderedOptions
+        || !areModelListsEqual(previousModels, refreshedModels)
+        || (previousSelectedModel && !refreshedModels.includes(previousSelectedModel));
+
+      if (!shouldRerender) {
+        return;
+      }
+
+      const selectedModel = renderModelOptions(refreshedModels, previousSelectedModel);
+      if (selectedModel !== previousSelectedModel) {
+        await loadModelInfo(selectedModel);
+      }
+    } finally {
+      state.lmsModelsRefreshInFlight = false;
+
+      if (refreshVersion === state.engineSelectionVersion && getActiveEngine() === 'lms') {
+        scheduleLmsModelsRefresh();
+      }
+    }
+  }
+
+
+  // Preset helpers.
+  // Build the preset configuration payload for the active engine.
+  function buildActivePresetConfigPayload() {
+    const adapter = getBackendEngineAdapter();
+    const optionsPayload = parametersUi.collectOptionsPayload();
+    if (typeof adapter.buildPresetConfig === 'function') {
+      return adapter.buildPresetConfig(optionsPayload);
+    }
+    return optionsPayload;
+  }
+
+  // Sync the current option values into the active preset.
+  async function syncActivePreset() {
+    const adapter = getBackendEngineAdapter();
+    if (!adapter.presetApiBase) {
+      return;
+    }
+
+    const modelName = getSelectedModelName();
+    if (!modelName) {
+      return;
+    }
+
+    const payload = await postJson(`${adapter.presetApiBase}/sync/`, {
+      model: modelName,
+      config: buildActivePresetConfigPayload()
+    });
+    applyPresetState(payload);
+  }
+
+  // Debounce preset sync calls while the user edits controls.
+  function schedulePresetSync() {
+    const adapter = getBackendEngineAdapter();
+    if (!adapter.supportsPresets) {
+      return;
+    }
+
+    window.clearTimeout(state.presetSyncTimer);
+    state.presetSyncTimer = window.setTimeout(function syncLater() {
+      syncActivePreset().catch(function onSyncError(error) {
+        console.error('Failed to sync preset:', error);
+      });
+    }, 220);
+  }
+
+
+  // Model info loading.
+  // Load capabilities and defaults for the selected model.
+  async function loadModelInfo(model) {
+    const requestedEngine = getActiveBackendEngine();
+    const requestVersion = ++state.modelInfoRequestVersion;
+
+    if (!model) {
+      state.currentModelInfo = null;
+      resetPresetUi();
+      parametersUi.resetDynamicPanels();
+      parametersUi.updateVisibleDividers();
+      state.visionState.supported = false;
+      state.fileState.supported = false;
+      resetThinkState();
+      state.toolState.supported = false;
+      state.selectedToolServerIds = new Set();
+      parametersUi.updateAvailableToolServers(state.defaultAvailableToolServers);
+      attachmentsUi.updateAttachmentControls();
+      parametersUi.updateThinkControls();
+      parametersUi.renderToolControls();
+      return;
+    }
+
+    try {
+      const data = await getJson(`/api/model_info/?engine=${encodeURIComponent(requestedEngine)}&model=${encodeURIComponent(model)}`);
+
+      if (requestVersion !== state.modelInfoRequestVersion || requestedEngine !== getActiveBackendEngine() || model !== getSelectedModelName()) {
+        return;
+      }
+
+      // Rebuild all capability-dependent panels from the latest payload.
+      state.currentModelInfo = data;
+      rememberLastModel(requestedEngine, model);
+      parametersUi.resetDynamicPanels();
+      applyPresetState(data.ollama_presets || data.lms_presets || null);
+
+      state.toolState.supported = !!data.supports_tool_calling;
+      parametersUi.updateAvailableToolServers(data.available_tool_servers || state.defaultAvailableToolServers);
+      if (!state.toolState.supported) {
+        state.selectedToolServerIds = new Set();
+        parametersUi.renderToolControls();
+      }
+
+      state.visionState.supported = !!data.supports_vision;
+      state.fileState.supported = !!data.supports_files;
+      attachmentsUi.updateAttachmentControls();
+      // Do not drop queued attachments during routine model-info refreshes.
+      // Pending files should only be cleared explicitly by user action,
+      // after send, or when starting a new chat.
+
+      state.thinkState.supported = !!data.supports_thinking;
+      state.thinkState.paramName = data.think_param_name || 'think';
+      state.thinkState.levelSupported = !!data.supports_think_level;
+      state.thinkState.toggleSupported = data.supports_think_toggle === undefined
+        ? false
+        : !!data.supports_think_toggle;
+      state.thinkState.levelParamName = data.think_level_param_name || 'think_level';
+      const metadataThinkLevelOptions = Array.isArray(data.think_level_options) && data.think_level_options.length > 0
+        ? data.think_level_options.map(function mapOption(value) { return String(value); })
+        : [];
+      const fallbackThinkLevelOptions = state.thinkState.levelSupported
+        ? (LLM_PARAMETER_OPTION_SETS[state.thinkState.levelParamName] || [])
+        : [];
+      state.thinkState.levelOptions = metadataThinkLevelOptions.length > 0
+        ? metadataThinkLevelOptions
+        : fallbackThinkLevelOptions.slice();
+      state.thinkState.enabled = data.defaults && data.defaults[state.thinkState.paramName] !== undefined
+        ? String(data.defaults[state.thinkState.paramName]).toLowerCase() === 'true' || data.defaults[state.thinkState.paramName] === true
+        : true;
+      state.thinkState.level = data.defaults && data.defaults[state.thinkState.levelParamName] !== undefined
+        ? String(data.defaults[state.thinkState.levelParamName])
+        : (state.thinkState.levelOptions[0] || '');
+      if (
+        state.thinkState.levelSupported
+        && state.thinkState.levelOptions.length > 0
+        && String(state.thinkState.level || '').toLowerCase() === 'off'
+        && state.thinkState.enabled
+      ) {
+        state.thinkState.level = state.thinkState.levelOptions[0];
+      }
+
+      parametersUi.renderThinkLevelControls();
+      parametersUi.updateThinkControls();
+
+      if (!data.defaults) {
+        parametersUi.updateVisibleDividers();
+        return;
+      }
+
+      // Remove thinking keys because they are rendered by dedicated controls.
+      const adapter = getBackendEngineAdapter();
+      let defaults = { ...data.defaults };
+      delete defaults[state.thinkState.paramName];
+      delete defaults[state.thinkState.levelParamName];
+      if (typeof adapter.sanitizeModelDefaults === 'function') {
+        defaults = adapter.sanitizeModelDefaults(defaults);
+      }
+
+      parametersUi.renderModelParameters(data, defaults);
+    } catch (error) {
+      if (requestVersion !== state.modelInfoRequestVersion) {
+        return;
+      }
+
+      state.currentModelInfo = null;
+      resetPresetUi();
+      parametersUi.resetDynamicPanels();
+      parametersUi.updateVisibleDividers();
+      parametersUi.updateAvailableToolServers(state.defaultAvailableToolServers);
+      state.visionState.supported = false;
+      state.fileState.supported = false;
+      resetThinkState();
+      state.toolState.supported = false;
+      parametersUi.renderThinkLevelControls();
+      attachmentsUi.updateAttachmentControls();
+      parametersUi.updateThinkControls();
+      parametersUi.renderToolControls();
+      console.error('Failed to load model parameters', error);
+    }
+  }
+
+
+  // Preset actions.
+  // Activate one preset for the selected model.
+  async function selectPreset(presetId) {
+    const adapter = getBackendEngineAdapter();
+    const modelName = getSelectedModelName();
+    if (!adapter.presetApiBase || !presetId || !modelName) {
+      return;
+    }
+
+    const payload = await postJson(`${adapter.presetApiBase}/select/`, {
+      model: modelName,
+      preset_id: presetId
+    });
+    applyPresetState(payload);
+    await loadModelInfo(modelName);
+  }
+
+  // Create a new preset from the current control values.
+  async function createPreset() {
+    const adapter = getBackendEngineAdapter();
+    const modelName = getSelectedModelName();
+    if (!adapter.presetApiBase || !modelName) {
+      return;
+    }
+
+    const requestedName = window.prompt('Preset name', '');
+    if (requestedName === null) {
+      return;
+    }
+
+    const payload = await postJson(`${adapter.presetApiBase}/create/`, {
+      model: modelName,
+      name: requestedName.trim(),
+      config: buildActivePresetConfigPayload()
+    });
+    applyPresetState(payload);
+    await loadModelInfo(modelName);
+  }
+
+  // Rename the active custom preset.
+  async function renamePreset() {
+    const adapter = getBackendEngineAdapter();
+    const activePreset = getActivePreset();
+    const modelName = getSelectedModelName();
+    if (!adapter.presetApiBase || !modelName || !activePreset || activePreset.is_default) {
+      return;
+    }
+
+    const requestedName = window.prompt('Preset name', activePreset.name || '');
+    if (requestedName === null) {
+      return;
+    }
+
+    const payload = await postJson(`${adapter.presetApiBase}/rename/`, {
+      model: modelName,
+      preset_id: activePreset.id,
+      name: requestedName.trim()
+    });
+    applyPresetState(payload);
+  }
+
+  // Delete the active custom preset and refresh model info.
+  async function deletePreset() {
+    const adapter = getBackendEngineAdapter();
+    const activePreset = getActivePreset();
+    const modelName = getSelectedModelName();
+    if (!adapter.presetApiBase || !modelName || !activePreset || activePreset.is_default) {
+      return;
+    }
+
+    if (!window.confirm(t('confirm.deletePreset', { name: activePreset.name }, `Delete preset "${activePreset.name}"?`))) {
+      return;
+    }
+
+    const payload = await postJson(`${adapter.presetApiBase}/delete/`, {
+      model: modelName,
+      preset_id: activePreset.id
+    });
+    applyPresetState(payload);
+    await loadModelInfo(modelName);
+  }
+
+
+  // Persistence actions.
+  // Persist the active engine address and reload models when needed.
+  async function persistEngineAddress() {
+    const engine = getActiveEngine();
+    const addressKey = getEngineAddressKey(engine);
+    const addressValue = dom.$engineAddressInput.val().trim();
+    const selectionVersion = ++state.engineSelectionVersion;
+
+    if (!addressKey) {
+      return;
+    }
+
+    clearLmsModelsRefreshTimer();
+
+    if ((state.runtimeSettings[addressKey] || '') === addressValue) {
+      setEngineAddressStatus('Saved', null);
+      syncLmsModelsRefresh();
+      return;
+    }
+
+    try {
+      setEngineAddressStatus('Saving...', 'pending');
+      state.runtimeSettings = await saveRuntimeSettings({ [addressKey]: addressValue });
+      await refreshActiveEngineModels({
+        engine,
+        selectionVersion,
+        preferredModel: ''
+      });
+      syncLmsModelsRefresh();
+    } catch (error) {
+      console.error('Failed to save engine address:', error);
+      resetModelUiState('No models available');
+      setEngineAddressStatus('Error', 'error');
+      syncLmsModelsRefresh();
+    }
+  }
+
+  // Toggle the active engine API key state.
+  async function handleApiKeyToggle() {
+    const engine = getActiveEngine();
+    const apiKeyKey = getEngineApiKeyKey(engine);
+    if (!apiKeyKey) {
+      return;
+    }
+
+    const isEnabled = dom.$engineApiKeyEnabled.is(':checked');
+    dom.$engineApiKeyInput.toggle(isEnabled);
+    if (isEnabled) {
+      setEngineApiKeyStatus('On', null);
+      dom.$engineApiKeyInput.trigger('focus');
+      return;
+    }
+
+    try {
+      const selectionVersion = ++state.engineSelectionVersion;
+      setEngineApiKeyStatus('Saving...', 'pending');
+      state.runtimeSettings = await saveRuntimeSettings({ [apiKeyKey]: '' });
+      await refreshActiveEngineModels({
+        engine,
+        selectionVersion
+      });
+    } catch (error) {
+      console.error('Failed to update API key state:', error);
+      resetModelUiState('No models available');
+      setEngineApiKeyStatus('Error', 'error');
+    }
+  }
+
+  // Persist a new API key for the active engine.
+  async function persistApiKey() {
+    const engine = getActiveEngine();
+    const apiKeyKey = getEngineApiKeyKey(engine);
+    if (!apiKeyKey || !dom.$engineApiKeyEnabled.is(':checked')) {
+      return;
+    }
+
+    const apiKeyValue = dom.$engineApiKeyInput.val().trim();
+    if (!apiKeyValue) {
+      setEngineApiKeyStatus(hasStoredEngineApiKey(engine) ? 'On' : 'Off', null);
+      return;
+    }
+
+    try {
+      const selectionVersion = ++state.engineSelectionVersion;
+      setEngineApiKeyStatus('Saving...', 'pending');
+      state.runtimeSettings = await saveRuntimeSettings({ [apiKeyKey]: apiKeyValue });
+      dom.$engineApiKeyInput.val('');
+      await refreshActiveEngineModels({
+        engine,
+        selectionVersion
+      });
+    } catch (error) {
+      console.error('Failed to save API key:', error);
+      resetModelUiState('No models available');
+      setEngineApiKeyStatus('Error', 'error');
+    }
+  }
+
+  return {
+    applyEngineSelection,
+    applySubEngineSelection,
+    createPreset,
+    deletePreset,
+    ensureChatBackend,
+    fetchModelsForEngine,
+    getActiveBackendEngine,
+    getActiveEngine,
+    getActivePreset,
+    getEngineAddressKey,
+    getEngineApiKeyKey,
+    getSelectedModelName,
+    hasStoredEngineApiKey,
+    handleApiKeyToggle,
+    loadModelInfo,
+    persistApiKey,
+    persistEngineAddress,
+    refreshActiveEngineModels,
+    rememberLastModel,
+    renamePreset,
+    resetModelUiState,
+    schedulePresetSync,
+    selectPreset,
+    setEngineAddressStatus,
+    setChatBackendStatus,
+    syncLmsModelsRefresh,
+    updateEngineAddressUi
+  };
+}

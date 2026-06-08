@@ -1,0 +1,161 @@
+{
+    "fileVersion": 1,
+    "id": "aslm-code",
+    "name": "ASLM Code",
+    "description": "ASLM Code Module - coding assistant UI with LLM inference delegated to ASLM-Chat",
+    "version": "0.1.0.0",
+    "author": "NGGT-ASLM",
+    "type": "ui",
+    "category": [
+        "code"
+    ],
+    "hasPage": true,
+    "icon": "icon.png",
+    "sidebarIcon": "sidebar_icon.png",
+    "source": {
+        "type": "github",
+        "repo": "NGGTLightKeeper/ASLM-Code"
+    },
+    "update": {
+        "mode": "release",
+        "channel": "release",
+        "branch": "main",
+        "preserve": [
+            "Data/venvs",
+            "Data/uploads",
+            "Settings/settings.json",
+            "Skills",
+            "MCP/mcp.json",
+            "db.sqlite3"
+        ],
+        "runFirstRunAfterUpdate": true
+    },
+    "dependencies": {
+        "engines": [
+            {
+                "id": "python-runtime",
+                "libraries": [
+                    "virtualenv"
+                ]
+            }
+        ],
+        "modules": [
+            {
+                "id": "aslm-chat"
+            }
+        ]
+    },
+    "commands": {
+        "firstRun": [
+            {
+                "name": "First Run Setup",
+                "description": "Generates settings.json and applies database migrations",
+                "engine": "python-runtime",
+                "exec": "main.py first_run"
+            }
+        ],
+        "run": [
+            {
+                "name": "UI Server",
+                "description": "Launches the Django development server",
+                "engine": "python-runtime",
+                "exec": "main.py runserver"
+            }
+        ]
+    },
+    "settings": [
+        {
+            "key": "ui-port",
+            "name": "UI Server Port",
+            "description": "Port the UI server listens on",
+            "type": "port",
+            "default": 20000,
+            "engine": "python-runtime",
+            "getExec": "main.py get_setting --key ui-port",
+            "setExec": "main.py set_setting --key ui-port --value {value}"
+        },
+        {
+            "key": "api-port",
+            "name": "API Server Port",
+            "description": "Port the UI server listens on",
+            "type": "port",
+            "default": 20001,
+            "engine": "python-runtime",
+            "getExec": "main.py get_setting --key api-port",
+            "setExec": "main.py set_setting --key api-port --value {value}"
+        },
+        {
+            "key": "aslm-host-theme",
+            "name": "ASLM host theme",
+            "description": "Theme snapshot from the host ASLM app; applied on each module start. Managed only by ASLM.",
+            "type": "theme",
+            "engine": "python-runtime",
+            "setExec": "main.py apply_aslm_host_theme --file {value}"
+        },
+        {
+            "key": "aslm-host-locale",
+            "name": "ASLM host locale",
+            "description": "Language snapshot from the host ASLM app; applied on each module start. Managed only by ASLM.",
+            "type": "locale",
+            "engine": "python-runtime",
+            "setExec": "main.py apply_aslm_locale --file {value}"
+        },
+        {
+            "key": "console_log_level",
+            "name": "Console Log Level",
+            "description": "How much runtime detail ASLM-Code prints into the ASLM console.",
+            "type": "select",
+            "default": "debug",
+            "allowedValues": [
+                "basic",
+                "debug",
+                "trace"
+            ],
+            "engine": "python-runtime",
+            "getExec": "main.py get_setting --key console_log_level",
+            "setExec": "main.py set_setting --key console_log_level --value {value}"
+        },
+        {
+            "key": "llm-engine",
+            "name": "Active LLM Engine",
+            "description": "Engine used for chat generation (resolved via ASLM-Chat)",
+            "type": "select",
+            "default": "aslm-chat",
+            "allowedValues": [
+                "aslm-chat"
+            ],
+            "engine": "python-runtime",
+            "getExec": "main.py get_setting --key llm-engine",
+            "setExec": "main.py set_setting --key llm-engine --value {value}",
+            "value": "aslm-chat"
+        },
+        {
+            "key": "llm-sub-engine",
+            "name": "ASLM-Chat Backend",
+            "description": "Backend engine used inside ASLM-Chat",
+            "type": "select",
+            "default": "ollama-service",
+            "allowedValues": [
+                "ollama-service",
+                "lms",
+                "openai",
+                "google-genai"
+            ],
+            "engine": "python-runtime",
+            "getExec": "main.py get_setting --key llm-sub-engine",
+            "setExec": "main.py set_setting --key llm-sub-engine --value {value}",
+            "value": "ollama-service"
+        }
+    ],
+    "moduleInterop": {
+        "protocolVersion": 1,
+        "client": {
+            "enabled": true
+        }
+    },
+    "status": {
+        "installed": false,
+        "enabled": false,
+        "firstRunCompleted": false
+    }
+}

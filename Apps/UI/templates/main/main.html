@@ -1,0 +1,409 @@
+{% extends "main/base.html" %}
+{% load i18n_tags %}
+
+{% block title %}{% t "meta.appTitle" %}{% endblock %}
+
+{% block extra_css %}{% endblock %}
+
+{% block body %}
+{% comment %} Copyright NGGT.LightKeeper. All Rights Reserved. {% endcomment %}
+
+{# Main chat layout. #}
+<div class="chat-shell">
+    {% csrf_token %}
+
+    {# Conversation area. #}
+    <main class="main-area" id="mainArea">
+        <header class="topbar">
+            <h2 class="chat-title" id="chatTitle">{% t "chat.newChat" %}</h2>
+        </header>
+
+        {# Welcome state and message stream. #}
+        <div class="messages-area" id="messagesArea">
+            <div class="messages-inner" id="messagesInner">
+                <div class="welcome" id="welcomeScreen">
+                    <h1>{% t "chat.howCanIHelp" %}</h1>
+                    <div class="input-area welcome-input">
+                        <div class="input-wrapper" id="inputWrapper">
+                            <input type="file" id="imageInput" multiple accept="*/*" style="display:none;">
+                            <div class="image-preview-grid" id="imagePreviewStrip" style="display:none;"></div>
+                            <textarea class="chat-input" id="chatInput" placeholder="{% t "composer.placeholder" %}" rows="1"></textarea>
+                            <div class="input-bottom-bar">
+                                <div class="input-bottom-left">
+                                    <button class="composer-menu-btn" id="composerMenuBtn" type="button" title="{% t "composer.menu" %}" aria-label="{% t "composer.menu" %}" aria-expanded="false" aria-controls="composerMenuPopover">
+                                        <svg width="18" height="18" fill="currentColor" viewBox="0 -960 960 960" aria-hidden="true"><use href="{% static 'img/ui/add-2.svg' %}#icon"></use></svg>
+                                    </button>
+                                    <div class="composer-menu-popover" id="composerMenuPopover" role="menu" aria-label="{% t "composer.menu" %}" style="display:none;">
+                                        <button class="composer-menu-action attach-btn" id="attachBtn" type="button" style="display:none;" role="menuitem" title="{% t "composer.attachFiles" %}" aria-label="{% t "composer.attachFiles" %}">
+                                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/paperclip.svg' %}#icon"></use></svg>
+                                            <span>Attach files</span>
+                                        </button>
+                                        <div class="composer-menu-tools" data-tool-menu style="display:none;">
+                                            <div class="composer-menu-section-title">{% t "composer.tools" %}</div>
+                                            <div class="composer-tool-list"></div>
+                                        </div>
+                                        <div class="composer-menu-other" data-skills-menu>
+                                            <div class="composer-menu-section-title">{% t "composer.other" %}</div>
+                                            <div class="composer-skills-host"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="input-bottom-right">
+                                    <div class="composer-trailing-actions">
+                                        <div class="think-level-selector" id="thinkLevelSelector" style="display:none;">
+                                            <button class="think-toggle-btn" id="thinkToggleBtn" type="button" title="{% t "composer.reasoningEffort" %}" aria-haspopup="menu" aria-expanded="false">
+                                                <span class="think-toggle-label">{% t "composer.off" %}</span>
+                                                <svg class="think-toggle-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                                            </button>
+                                            <div class="think-level-menu" role="menu" aria-label="{% t "composer.reasoningEffort" %}" style="display:none;">
+                                                <div class="think-level-menu-title">{% t "composer.intelligence" %}</div>
+                                            </div>
+                                        </div>
+                                        <button class="send-btn" id="sendBtn" disabled aria-label="{% t "composer.sendMessage" %}">
+                                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                                <use href="{% static 'img/ui/send.svg' %}#icon"></use>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="composer-workspace-bar" id="composerWorkspaceBar"{% if preload_chat_id %} style="display:none;"{% endif %}>
+                            <div class="composer-workspace-picker">
+                                <button type="button" class="composer-workspace-chip" id="workspacePickerBtn"
+                                    aria-haspopup="menu" aria-expanded="false" aria-controls="workspacePickerMenu">
+                                    <span class="composer-workspace-chip-label" id="workspacePickerLabel">{% if current_workspace %}{{ current_workspace.name }}{% else %}{% t "workspace.select" %}{% endif %}</span>
+                                    <svg class="composer-workspace-chip-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path>
+                                    </svg>
+                                </button>
+                                <div class="composer-workspace-menu" id="workspacePickerMenu" role="menu" style="display:none;">
+                                    <div class="composer-workspace-menu-list" id="workspacePickerList"></div>
+                                    <button type="button" class="composer-workspace-menu-create" id="newWorkspaceBtn">
+                                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                            <use href="{% static 'img/ui/plus.svg' %}#icon"></use>
+                                        </svg>
+                                        <span>{% t "workspace.newWorkspace" %}</span>
+                                    </button>
+                                </div>
+                                <div class="workspace-item-dropdown" id="workspaceItemDropdown" style="display:none;" role="menu">
+                                    <button type="button" class="workspace-item-dropdown-btn workspace-item-dropdown-btn--danger" id="workspaceDeleteBtn" role="menuitem">
+                                        <span class="workspace-item-dropdown-icon" aria-hidden="true">
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                <use href="{% static 'img/ui/trash.svg' %}#icon"></use>
+                                            </svg>
+                                        </span>
+                                        <span>{% t "sidebar.delete" %}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {# Sticky composer for active chats. #}
+        <div class="input-area conversation-input" id="conversationInput" style="display:none;">
+            <div class="input-wrapper" id="inputWrapperConv">
+                <input type="file" id="imageInputConv" multiple accept="*/*" style="display:none;">
+                <div class="image-preview-grid" id="imagePreviewStripConv" style="display:none;"></div>
+                <textarea class="chat-input" id="chatInputConv" placeholder="{% t "composer.placeholder" %}" rows="1"></textarea>
+                <div class="input-bottom-bar">
+                    <div class="input-bottom-left">
+                        <button class="composer-menu-btn" id="composerMenuBtnConv" type="button" title="{% t "composer.menu" %}" aria-label="{% t "composer.menu" %}" aria-expanded="false" aria-controls="composerMenuPopoverConv">
+                            <svg width="18" height="18" fill="currentColor" viewBox="0 -960 960 960" aria-hidden="true"><use href="{% static 'img/ui/add-2.svg' %}#icon"></use></svg>
+                        </button>
+                        <div class="composer-menu-popover" id="composerMenuPopoverConv" role="menu" aria-label="{% t "composer.menu" %}" style="display:none;">
+                            <button class="composer-menu-action attach-btn" id="attachBtnConv" type="button" style="display:none;" role="menuitem" title="{% t "composer.attachFiles" %}" aria-label="{% t "composer.attachFiles" %}">
+                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/paperclip.svg' %}#icon"></use></svg>
+                                <span>Attach files</span>
+                            </button>
+                            <div class="composer-menu-tools" data-tool-menu style="display:none;">
+                                <div class="composer-menu-section-title">{% t "composer.tools" %}</div>
+                                <div class="composer-tool-list"></div>
+                            </div>
+                            <div class="composer-menu-other" data-skills-menu>
+                                <div class="composer-menu-section-title">{% t "composer.other" %}</div>
+                                <div class="composer-skills-host"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-bottom-right">
+                        <div class="composer-trailing-actions">
+                            <button class="context-usage-indicator" id="contextUsageBtnConv" type="button" aria-label="{% t "composer.contextUsage" %}">
+                                <svg class="context-usage-ring" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                                    <circle class="context-usage-track" cx="9" cy="9" r="6"></circle>
+                                    <circle class="context-usage-progress" cx="9" cy="9" r="6"></circle>
+                                </svg>
+                            </button>
+                            <div class="think-level-selector" id="thinkLevelSelectorConv" style="display:none;">
+                                <button class="think-toggle-btn" id="thinkToggleBtnConv" type="button" title="{% t "composer.reasoningEffort" %}" aria-haspopup="menu" aria-expanded="false">
+                                    <span class="think-toggle-label">{% t "composer.off" %}</span>
+                                    <svg class="think-toggle-chevron" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                                </button>
+                                <div class="think-level-menu" role="menu" aria-label="{% t "composer.reasoningEffort" %}" style="display:none;">
+                                    <div class="think-level-menu-title">{% t "composer.intelligence" %}</div>
+                                </div>
+                            </div>
+                            <button class="send-btn" id="sendBtnConv" disabled aria-label="{% t "composer.sendMessage" %}">
+                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                    <use href="{% static 'img/ui/send.svg' %}#icon"></use>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    {# Runtime settings sidebar. #}
+    {# Reasoning side drawer. #}
+    <div class="reasoning-drawer" id="reasoningDrawer" aria-label="{% t "reasoning.panel" %}" role="dialog" aria-modal="false">
+        <div class="reasoning-drawer-resize-handle" id="reasoningDrawerResizeHandle" aria-hidden="true"></div>
+        <div class="reasoning-drawer-header">
+            <div class="reasoning-drawer-header-left">
+                <span class="reasoning-drawer-icon" aria-hidden="true"></span>
+                <span class="reasoning-drawer-title">{% t "reasoning.title" %}</span>
+                <span class="reasoning-drawer-summary" id="reasoningDrawerSummary"></span>
+            </div>
+            <button class="reasoning-drawer-close" id="reasoningDrawerClose" type="button" aria-label="{% t "reasoning.closePanel" %}">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/x.svg' %}#icon"></use></svg>
+            </button>
+        </div>
+        <div class="reasoning-drawer-body" id="reasoningDrawerBody"></div>
+    </div>
+    <div class="reasoning-drawer-backdrop" id="reasoningDrawerBackdrop"></div>
+
+    <aside class="sidebar sidebar-right" id="sidebarRight">
+        <div class="sidebar-header">
+            <span class="logo-name">{% t "settings.modelSettings" %}</span>
+            <button class="sidebar-collapse-btn" id="sidebarRightToggle" type="button" title="{% t "settings.collapse" %}" aria-label="{% t "settings.collapse" %}" aria-expanded="true">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/arrow-left.svg' %}#icon"></use></svg>
+            </button>
+        </div>
+
+        <div class="settings-panel">
+            <div class="settings-section" id="group-connection">
+                <div class="settings-section-header">
+                    {% t "settings.connection" %}
+                    <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                </div>
+                <div class="settings-section-content">
+                    <div class="setting-group">
+                        <label class="setting-label" for="engineSelector">{% t "settings.engine" %}</label>
+                        <select class="model-selector" id="engineSelector">
+                            {% for engine in engine_options %}
+                                <option value="{{ engine.id }}" {% if llm_engine == engine.id %}selected{% endif %}>{{ engine.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="setting-group" id="subEngineGroup">
+                        <label class="setting-label" for="subEngineSelector">{% t "settings.subEngine" %}</label>
+                        <select class="model-selector" id="subEngineSelector">
+                            {% for engine in sub_engine_options %}
+                                <option value="{{ engine.id }}" {% if llm_sub_engine == engine.id %}selected{% endif %}>{{ engine.label }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="setting-note" id="chatBackendStatus">{% t "settings.chatBackendChecking" %}</p>
+                    </div>
+                    <div class="setting-group" id="engineAddressGroup">
+                        <label class="setting-label" for="engineAddressInput">
+                            {% t "settings.address" %}
+                            <span class="setting-value" id="engineAddressStatus">{% t "settings.saved" %}</span>
+                        </label>
+                        <input class="setting-input" id="engineAddressInput" type="text" value="{{ runtime_settings.active_url|default:'' }}" placeholder="{% t "settings.engineAddressPlaceholder" %}">
+                        <p class="setting-note" id="engineAddressHint">{% t "settings.engineAddressHint" %}</p>
+                    </div>
+                    <div class="setting-group" id="engineApiKeyGroup">
+                        <label class="setting-label" for="engineApiKeyEnabled">
+                            {% t "settings.apiKey" %}
+                            <span class="setting-value" id="engineApiKeyStatus">{% t "settings.off" %}</span>
+                        </label>
+                        <label class="setting-switch-row" for="engineApiKeyEnabled">
+                            <span class="setting-switch-text">{% t "settings.useSavedKey" %}</span>
+                            <span class="setting-switch-control">
+                                <input class="setting-switch-input" id="engineApiKeyEnabled" type="checkbox" {% if runtime_settings.active_has_api_key %}checked{% endif %}>
+                                <span class="setting-switch-slider" aria-hidden="true"></span>
+                            </span>
+                        </label>
+                        <input class="setting-input" id="engineApiKeyInput" type="password" placeholder="{% t "settings.pasteApiKey" %}" autocomplete="off">
+                        <p class="setting-note" id="engineApiKeyHint">{% t "settings.apiKeyHint" %}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-divider" id="divider-connection"></div>
+
+            <div class="settings-section" id="group-model">
+                <div class="settings-section-header">
+                    {% t "settings.model" %}
+                    <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                </div>
+                <div class="settings-section-content">
+                    <div class="model-selector-wrap">
+                        <select class="model-selector" id="modelSelector">
+                            {% if models %}
+                                {% for model in models %}
+                                    <option value="{{ model }}">{{ model }}</option>
+                                {% endfor %}
+                            {% else %}
+                                <option value="">{% t "settings.modelsLoadOnDemand" %}</option>
+                            {% endif %}
+                        </select>
+                        <span class="model-vision-indicator" id="modelVisionIndicator" title="{% t "settings.visionModel" %}" aria-label="{% t "settings.visionModel" %}">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/eye.svg' %}#icon"></use></svg>
+                        </span>
+                    </div>
+                    <div class="setting-group" id="ollamaPresetGroup" style="display:none;">
+                        <label class="setting-label" for="ollamaPresetSelector">{% t "settings.preset" %}</label>
+                        <select class="model-selector" id="ollamaPresetSelector">
+                            <option value="">{% t "settings.default" %}</option>
+                        </select>
+                        <div class="preset-actions">
+                            <button class="preset-action-btn" id="ollamaPresetCreateBtn" type="button">{% t "settings.presetNew" %}</button>
+                            <button class="preset-action-btn" id="ollamaPresetRenameBtn" type="button">{% t "settings.presetRename" %}</button>
+                            <button class="preset-action-btn preset-action-btn-danger" id="ollamaPresetDeleteBtn" type="button">{% t "settings.presetDelete" %}</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section collapsed" id="group-tools" style="display:none;">
+                <div class="settings-section-header">
+                    {% t "settings.tools" %}
+                    <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                </div>
+                <div class="settings-section-content">
+                    <div class="tool-server-list" id="toolServerList"></div>
+                </div>
+            </div>
+
+            <div class="settings-divider" id="divider-tools" style="display:none;"></div>
+
+            <div class="settings-section collapsed" id="group-mcp" style="display:none;">
+                <div class="settings-section-header">
+                    {% t "settings.mcp" %}
+                    <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                </div>
+                <div class="settings-section-content" id="mcpSettingsContent">
+                </div>
+            </div>
+
+            <div class="settings-divider" id="divider-mcp" style="display:none;"></div>
+
+            <div class="settings-section collapsed" id="group-skills">
+                <div class="settings-section-header">
+                    {% t "settings.skills" %}
+                    <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                </div>
+                <div class="settings-section-content" id="skillsSettingsContent">
+                </div>
+            </div>
+
+            <div class="settings-divider" id="divider-skills"></div>
+
+            <div class="settings-section" id="group-system">
+                <div class="settings-section-header">
+                    {% t "settings.systemPrompt" %}
+                    <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                </div>
+                <div class="settings-section-content">
+                    <div class="setting-group">
+                        <textarea class="setting-textarea" id="systemPrompt" rows="4" placeholder='{% t "settings.systemPromptPlaceholder" %}'></textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-divider" id="divider-system" style="display:none;"></div>
+
+            <div id="dynamicParameters">
+                <div class="settings-section collapsed" id="group-load" style="display:none;">
+                    <div class="settings-section-header">
+                        {% t "settings.load" %}
+                        <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                    </div>
+                    <div class="settings-section-content"></div>
+                </div>
+
+                <div class="settings-divider" id="divider-load" style="display:none;"></div>
+
+                <div class="settings-section collapsed" id="group-custom" style="display:none;">
+                    <div class="settings-section-header">
+                        {% t "settings.customFields" %}
+                        <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                    </div>
+                    <div class="settings-section-content"></div>
+                </div>
+
+                <div class="settings-section collapsed" id="group-settings" style="display:none;">
+                    <div class="settings-section-header">
+                        {% t "settings.settings" %}
+                        <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                    </div>
+                    <div class="settings-section-content"></div>
+                </div>
+
+                <div class="settings-divider" id="divider-settings" style="display:none;"></div>
+
+                <div class="settings-section collapsed" id="group-sampling" style="display:none;">
+                    <div class="settings-section-header">
+                        {% t "settings.sampling" %}
+                        <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                    </div>
+                    <div class="settings-section-content"></div>
+                </div>
+
+                <div class="settings-divider" id="divider-sampling" style="display:none;"></div>
+
+                <div class="settings-section collapsed" id="group-advanced" style="display:none;">
+                    <div class="settings-section-header">
+                        {% t "settings.advanced" %}
+                        <svg class="chevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/chevron-down-markup.svg' %}#icon"></use></svg>
+                    </div>
+                    <div class="settings-section-content"></div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+</div>
+
+<div id="floating-media-root"></div>
+
+{# Tool execution inspector. #}
+<div class="tool-inspector-overlay" id="toolInspectorModal">
+    <div class="tool-inspector-panel">
+        <div class="tool-inspector-header">
+            <div class="tool-inspector-header-left">
+                <span class="tool-inspector-title"></span>
+                <span class="tool-inspector-server"></span>
+            </div>
+            <button class="tool-inspector-close" id="toolInspectorClose" aria-label="{% t "toolInspector.close" %}">
+                <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><use href="{% static 'img/ui/x.svg' %}#icon"></use></svg>
+            </button>
+        </div>
+        <div class="tool-inspector-body">
+            <div class="tool-inspector-section">
+                <div class="tool-inspector-section-label">{% t "toolInspector.in" %}</div>
+                <pre class="tool-inspector-in tool-inspector-pre"></pre>
+            </div>
+            <div class="tool-inspector-section">
+                <div class="tool-inspector-section-label">{% t "toolInspector.out" %}</div>
+                <pre class="tool-inspector-out tool-inspector-pre"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+{# Boot payloads for the main chat client. #}
+{{ runtime_settings|json_script:"runtimeSettingsData" }}
+{{ engine_options|json_script:"engineOptionsData" }}
+{{ sub_engine_options|json_script:"subEngineOptionsData" }}
+{{ available_tool_servers|json_script:"availableToolServersData" }}
+<script type="module" src="{% static 'js/main/main.js' %}"></script>
+{% endblock %}

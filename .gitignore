@@ -185,6 +185,9 @@ cython_debug/
 .vscode
 
 # MCP tools test logs and test data
+Tools/tests
+deploy.bat
+task
 *.pid
 *.log
 *.db
@@ -194,4 +197,21 @@ staticfiles
 Settings/settings.json
 Settings/host_theme.json
 Settings/host_locale.json
+MCP/mcp.json
 Data/
+!Apps/Data/
+!Docs/ASLM/content/docs/ASLM-Chat/Apps/Data/
+
+# Tools (shared)
+pytest-cache-files-*/
+
+# Archives (local download artifacts)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+*.bz2
+*.xz

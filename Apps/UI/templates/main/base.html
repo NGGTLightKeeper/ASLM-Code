@@ -1,0 +1,159 @@
+{% load i18n_tags %}
+{% comment %} Copyright NGGT.LightKeeper. All Rights Reserved. {% endcomment %}
+<!DOCTYPE html>
+<html lang="{{ html_lang }}" dir="{{ text_direction }}" style="color-scheme: {% if host_theme_effective == 'light' %}light{% else %}dark{% endif %};">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description"
+        content="{% block meta_description %}{% t "meta.appDescription" %}{% endblock %}" />
+    <title>{% block title %}{% t "meta.appTitle" %}{% endblock %}</title>
+
+    <link rel="icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
+    <link rel="shortcut icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
+
+    <link rel="stylesheet" href="{% static 'css/main/base.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/main/main.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/main/markdown.css' %}" />
+    <link rel="stylesheet" href="{% static 'css/main/browser-portal.css' %}" />
+    {% if host_theme_available %}
+    <style id="aslm-host-theme">{{ host_theme_css_variables|safe }}</style>
+    {% endif %}
+    <script type="application/json" id="aslmHostThemeData">{{ host_theme_json|safe }}</script>
+    <script type="application/json" id="aslmHostLocaleData">{{ host_locale_json|safe }}</script>
+    <link rel="stylesheet" href="{% static 'css/vendor/katex.min.css' %}" />
+    {% block extra_css %}{% endblock %}
+</head>
+
+<body data-preload-chat="{{ preload_chat_id|default:'' }}" data-preload-workspace="{{ preload_workspace_id|default:current_workspace_id|default:'' }}" data-llm-engine="{{ llm_engine|default:'' }}" data-llm-sub-engine="{{ llm_sub_engine|default:'' }}">
+<div class="app-shell">
+
+    <!-- Shared chat sidebar -->
+    <aside class="sidebar sidebar-left">
+        <div class="sidebar-header">
+            <span class="logo-name">{% t "sidebar.chats" %}</span>
+        </div>
+
+        <a class="new-chat-btn" id="newChatBtn"
+           href="{% if current_workspace_id %}/workspace/{{ current_workspace_id }}/{% else %}/{% endif %}">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <use href="{% static 'img/ui/plus.svg' %}#icon"></use>
+            </svg>
+            <span>{% t "sidebar.newChat" %}</span>
+        </a>
+
+        <div class="history-list" id="historyList">
+            {% for group in workspace_chat_groups %}
+                <section class="history-workspace-group" data-workspace-id="{{ group.workspace.id }}">
+                    <div class="history-workspace-header">
+                        <span class="history-workspace-name">{{ group.workspace.name }}</span>
+                    </div>
+                    <div class="history-workspace-chats">
+                        {% for chat in group.chats %}
+                            <a class="chat-item" href="/workspace/{{ group.workspace.id }}/chat/{{ chat.id }}/"
+                               data-chat-id="{{ chat.id }}" data-workspace-id="{{ group.workspace.id }}"
+                               {% if preload_chat_id == chat.id|stringformat:"s" %}aria-current="page"{% endif %}>
+                                <div class="chat-item-icon">
+                                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                                        <use href="{% static 'img/ui/chat-bubble.svg' %}#icon"></use>
+                                    </svg>
+                                </div>
+                                <div class="chat-item-body">
+                                    <span class="chat-item-title">{{ chat.title }}</span>
+                                    <span class="chat-item-date">{% t_param "sidebar.ago" time=chat.updated_at|timesince %}</span>
+                                </div>
+                                <button class="chat-item-menu-btn" aria-label="{% t "sidebar.chatOptions" %}">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                        <use href="{% static 'img/ui/ellipsis-vertical.svg' %}#icon"></use>
+                                    </svg>
+                                </button>
+                            </a>
+                        {% endfor %}
+                    </div>
+                </section>
+            {% empty %}
+                <div class="chat-item empty-state">
+                    <span class="chat-item-title">{% t "workspace.noneYet" %}</span>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="chat-item-dropdown" id="chatItemDropdown" style="display:none;">
+            <button class="chat-item-dropdown-btn" id="chatRenameBtn">{% t "sidebar.rename" %}</button>
+            <button class="chat-item-dropdown-btn chat-item-dropdown-btn--danger" id="chatDeleteBtn">{% t "sidebar.delete" %}</button>
+        </div>
+    </aside>
+
+    <!-- Page content -->
+    <div class="page-content">
+        {% block body %}{% endblock %}
+    </div>
+
+</div>
+
+<script type="application/json" id="workspacesData">{{ workspaces_json|safe }}</script>
+
+<script id="uiIconPathsData" type="application/json">
+{
+  "stopSquare": "{% static 'img/ui/stop-square.svg' %}",
+  "send": "{% static 'img/ui/send.svg' %}",
+  "addMenu": "{% static 'img/ui/add-2.svg' %}",
+  "removeAttachment": "{% static 'img/ui/x.svg' %}",
+  "copy": "{% static 'img/ui/copy.svg' %}",
+  "refresh": "{% static 'img/ui/refresh.svg' %}",
+  "trash": "{% static 'img/ui/trash.svg' %}",
+  "check": "{% static 'img/ui/check.svg' %}",
+  "arrowLeft": "{% static 'img/ui/arrow-left.svg' %}",
+  "chatBubble": "{% static 'img/ui/chat-bubble.svg' %}",
+  "eye": "{% static 'img/ui/eye.svg' %}",
+  "globe": "{% static 'img/ui/globe.svg' %}",
+  "webSearch": "{% static 'img/ui/web-search.svg' %}",
+  "webSearchError": "{% static 'img/ui/web-search-error.svg' %}",
+  "toolBash": "{% static 'img/ui/tools/bash.svg' %}",
+  "toolCode": "{% static 'img/ui/tools/code.svg' %}",
+  "toolTerminal": "{% static 'img/ui/tools/terminal.svg' %}",
+  "toolMakeFile": "{% static 'img/ui/tools/make_file.svg' %}",
+  "toolEditFile": "{% static 'img/ui/tools/edit_file.svg' %}",
+  "toolSearch": "{% static 'img/ui/tools/search.svg' %}",
+  "toolImageView": "{% static 'img/ui/tools/eye_tracking.svg' %}",
+  "browserCursor": "{% static 'img/ui/tools/browser/cursor.svg' %}",
+  "browserKeyboard": "{% static 'img/ui/tools/browser/keyboard.svg' %}",
+  "browserNavigate": "{% static 'img/ui/tools/browser/navigate.svg' %}",
+  "browserScroll": "{% static 'img/ui/tools/browser/scroll.svg' %}",
+  "browserType": "{% static 'img/ui/tools/browser/type.svg' %}",
+  "browserDisconnected": "{% static 'img/ui/tools/browser/disconnected.svg' %}",
+  "ellipsisVertical": "{% static 'img/ui/ellipsis-vertical.svg' %}",
+  "more": "{% static 'img/ui/icon_more.svg' %}",
+  "play": "{% static 'img/ui/play.svg' %}",
+  "pause": "{% static 'img/ui/pause.svg' %}",
+  "volume": "{% static 'img/ui/volume.svg' %}",
+  "volumeMuted": "{% static 'img/ui/volume-muted.svg' %}",
+  "fullscreen": "{% static 'img/ui/fullscreen.svg' %}",
+  "fullscreenExit": "{% static 'img/ui/fullscreen-exit.svg' %}",
+  "popout": "{% static 'img/ui/popout.svg' %}",
+  "dock": "{% static 'img/ui/dock.svg' %}",
+  "download": "{% static 'img/ui/download.svg' %}",
+  "audio": "{% static 'img/ui/audio.svg' %}",
+  "video": "{% static 'img/ui/video.svg' %}",
+  "skillsFolder": "{% static 'img/ui/skills/folder.svg' %}",
+  "skillsFolderOpen": "{% static 'img/ui/skills/folder-open.svg' %}",
+  "skillsFile": "{% static 'img/ui/skills/file.svg' %}"
+}
+</script>
+
+<script src="{% static 'js/jquery.min.js' %}"></script>
+<!-- Markdown parsing and sanitization -->
+<script src="{% static 'js/vendor/marked.min.js' %}"></script>
+<script src="{% static 'js/vendor/purify.min.js' %}"></script>
+<script src="{% static 'js/vendor/katex.min.js' %}"></script>
+<script src="{% static 'js/vendor/mermaid.min.js' %}"></script>
+<!-- Syntax highlighting -->
+<!-- Syntax highlighting: vendor theme is fixed (dark); swapping for host light/dark is deferred. -->
+<link rel="stylesheet" href="{% static 'css/vendor/atom-one-dark.min.css' %}">
+<script src="{% static 'js/vendor/highlight.min.js' %}"></script>
+
+{% block extra_js %}{% endblock %}
+</body>
+
+</html>

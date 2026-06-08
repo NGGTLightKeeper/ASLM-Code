@@ -1,0 +1,360 @@
+{
+  "schema_version": 1,
+  "_comment": "Runtime model metadata consumed by local tools. Ports are dynamic; resolve local_http_route sources through ASLM_Module.json and Settings/settings.json.",
+  "updated_at": "2026-06-08T10:57:25Z",
+  "active": {
+    "engine": "openai",
+    "engine_label": "OpenAI-Compatible",
+    "model": "gpt-test",
+    "source": "generation",
+    "primary_source": {
+      "name": "ASLM model info",
+      "type": "local_http_route",
+      "route": "/api/chat/",
+      "host": "127.0.0.1",
+      "port_setting": "ui-port",
+      "port_sources": [
+        "ASLM_Module.json settings[].value/default",
+        "Settings/settings.json",
+        "environment override when available"
+      ],
+      "fields": [
+        "engine",
+        "model",
+        "supports_vision",
+        "context_length",
+        "defaults"
+      ]
+    }
+  },
+  "models": {
+    "ollama-service:llama3.1": {
+      "engine": "ollama-service",
+      "model": "llama3.1",
+      "capabilities": {
+        "vision": false,
+        "tools": true,
+        "thinking": false,
+        "files": false
+      },
+      "limits": {
+        "context_window": 32768,
+        "model_context_limit": 8192,
+        "max_output_tokens": 8192,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/chat/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        },
+        {
+          "name": "Ollama loaded models",
+          "type": "local_http_route",
+          "route": "/api/ps",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider runtime source for loaded model state and loaded context_length."
+        },
+        {
+          "name": "Ollama model metadata",
+          "type": "local_http_route",
+          "route": "/api/show",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider model metadata source for capabilities and model limits."
+        }
+      ]
+    },
+    "lms:qwen": {
+      "engine": "lms",
+      "model": "qwen",
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "thinking": false,
+        "files": true
+      },
+      "limits": {
+        "context_window": 8192,
+        "model_context_limit": 8192,
+        "max_output_tokens": null,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/chat/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        }
+      ]
+    },
+    "ollama-service:model-without-tools": {
+      "engine": "ollama-service",
+      "model": "model-without-tools",
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "thinking": false,
+        "files": false
+      },
+      "limits": {
+        "context_window": 32768,
+        "model_context_limit": 8192,
+        "max_output_tokens": 8192,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/chat/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        },
+        {
+          "name": "Ollama loaded models",
+          "type": "local_http_route",
+          "route": "/api/ps",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider runtime source for loaded model state and loaded context_length."
+        },
+        {
+          "name": "Ollama model metadata",
+          "type": "local_http_route",
+          "route": "/api/show",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider model metadata source for capabilities and model limits."
+        }
+      ]
+    },
+    "openai:gpt-test": {
+      "engine": "openai",
+      "model": "gpt-test",
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "thinking": false,
+        "files": true
+      },
+      "limits": {
+        "context_window": 8192,
+        "model_context_limit": 8192,
+        "max_output_tokens": null,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/chat/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        }
+      ]
+    },
+    "lms:qwen3": {
+      "engine": "lms",
+      "model": "qwen3",
+      "capabilities": {
+        "vision": true,
+        "tools": true,
+        "thinking": true,
+        "files": true
+      },
+      "limits": {
+        "context_window": 65536,
+        "model_context_limit": 65536,
+        "max_output_tokens": null,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/model_info/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        }
+      ]
+    },
+    "ollama-service:llama3": {
+      "engine": "ollama-service",
+      "model": "llama3",
+      "capabilities": {
+        "vision": false,
+        "tools": true,
+        "thinking": false,
+        "files": false
+      },
+      "limits": {
+        "context_window": 32768,
+        "model_context_limit": 8192,
+        "max_output_tokens": 8192,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/generate/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        },
+        {
+          "name": "Ollama loaded models",
+          "type": "local_http_route",
+          "route": "/api/ps",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider runtime source for loaded model state and loaded context_length."
+        },
+        {
+          "name": "Ollama model metadata",
+          "type": "local_http_route",
+          "route": "/api/show",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider model metadata source for capabilities and model limits."
+        }
+      ]
+    },
+    "ollama-service:qwen": {
+      "engine": "ollama-service",
+      "model": "qwen",
+      "capabilities": {
+        "vision": false,
+        "tools": false,
+        "thinking": false,
+        "files": false
+      },
+      "limits": {
+        "context_window": 32768,
+        "model_context_limit": 8192,
+        "max_output_tokens": 8192,
+        "output_token_limit": null
+      },
+      "runtime": {},
+      "sources": [
+        {
+          "name": "ASLM model info",
+          "type": "local_http_route",
+          "route": "/api/chat/",
+          "host": "127.0.0.1",
+          "port_setting": "ui-port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "ASLM-normalized active model metadata written during model selection or generation."
+        },
+        {
+          "name": "Ollama loaded models",
+          "type": "local_http_route",
+          "route": "/api/ps",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider runtime source for loaded model state and loaded context_length."
+        },
+        {
+          "name": "Ollama model metadata",
+          "type": "local_http_route",
+          "route": "/api/show",
+          "host": "127.0.0.1",
+          "port_setting": "ollama-service_port",
+          "port_sources": [
+            "ASLM_Module.json settings[].value/default",
+            "Settings/settings.json",
+            "environment override when available"
+          ],
+          "notes": "Provider model metadata source for capabilities and model limits."
+        }
+      ]
+    }
+  }
+}

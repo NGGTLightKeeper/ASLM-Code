@@ -1,0 +1,446 @@
+# Copyright NGGT.LightKeeper. All Rights Reserved.
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import json
+import os
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+
+# Prepare project imports
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "ASLM.settings")
+
+SERVER_VENV_COMMANDS = {
+    "runserver",
+    "migrate",
+    "makemigrations",
+    "collectstatic",
+}
+
+
+# Run commands that need Django/server dependencies inside the server venv.
+def _maybe_reexec_in_server_venv(command: str) -> None:
+    """Delegate the current command to ASLM-Code's server venv when required."""
+
+    if command not in SERVER_VENV_COMMANDS:
+        return
+    if os.environ.get("ASLM_CODE_ACTIVE_VENV") == "server":
+        return
+
+    venv_path = Path(BASE_DIR) / "Data" / "venvs" / "server"
+    scripts_path = venv_path / ("Scripts" if os.name == "nt" else "bin")
+    python_path = scripts_path / ("python.exe" if os.name == "nt" else "python")
+    current_python = os.path.normcase(os.path.abspath(sys.executable))
+    target_python = os.path.normcase(os.path.abspath(str(python_path)))
+    if current_python == target_python:
+        os.environ["ASLM_CODE_ACTIVE_VENV"] = "server"
+        return
+
+    venv_ready = python_path.exists()
+    if not venv_ready:
+        from Services import venv_manager
+
+        quiet = False
+        if not venv_manager.ensure_venv("server", log=not quiet):
+            print("[ASLM-Code] Error: server venv could not be prepared.")
+            sys.exit(1)
+        python_path = venv_manager.get_venv_python("server")
+        venv_path = venv_manager.get_venv_path("server")
+        scripts_path = python_path.parent
+
+    env = os.environ.copy()
+    env["ASLM_CODE_ACTIVE_VENV"] = "server"
+    env["VIRTUAL_ENV"] = str(venv_path)
+    env["PATH"] = str(scripts_path) + os.pathsep + env.get("PATH", "")
+    env.pop("PYTHONHOME", None)
+    args = [str(python_path), "-u", __file__, *sys.argv[1:]]
+    process = subprocess.Popen(args, env=env)
+    try:
+        sys.exit(process.wait())
+    except KeyboardInterrupt:
+        if process.poll() is None:
+            process.terminate()
+        raise
+    finally:
+        if process.poll() is None:
+            process.terminate()
+
+
+# Run Django command
+def run_django_command(*args: str, log: bool = False) -> None:
+    """Execute a Django management command."""
+
+    from django.core.management import execute_from_command_line
+
+    argv = ["manage.py", *args]
+    if log:
+        print(f"[ASLM-Code] Running: {' '.join(argv)}")
+
+    execute_from_command_line(argv)
+
+
+class LazyDjangoApplication:
+    """Bind the UI port first, then hand requests to Django once it is ready."""
+
+    def __init__(self) -> None:
+        self._application = None
+        self._error: BaseException | None = None
+        self._ready = threading.Event()
+        self._lock = threading.Lock()
+
+    def load_in_background(self) -> None:
+        """Start loading Django without blocking the listening socket."""
+
+        thread = threading.Thread(target=self._load, name="aslm-code-django-loader", daemon=True)
+        thread.start()
+
+    def _load(self) -> None:
+        with self._lock:
+            if self._application is not None or self._error is not None:
+                return
+            try:
+                from ASLM.wsgi import application
+
+                self._application = application
+            except BaseException as exc:
+                self._error = exc
+            finally:
+                self._ready.set()
+
+    def __call__(self, environ, start_response):
+        if self._application is not None:
+            return self._application(environ, start_response)
+
+        if self._error is not None:
+            body = f"ASLM-Code failed to start: {self._error}".encode("utf-8", errors="replace")
+            start_response(
+                "500 Internal Server Error",
+                [("Content-Type", "text/plain; charset=utf-8"), ("Content-Length", str(len(body)))],
+            )
+            return [body]
+
+        body = (
+            "<!doctype html><html><head><meta charset=\"utf-8\">"
+            "<meta http-equiv=\"refresh\" content=\"1\">"
+            "<title>ASLM-Code starting</title></head>"
+            "<body style=\"font-family:Segoe UI,sans-serif;background:#111;color:#eee;\">"
+            "ASLM-Code is starting..."
+            "</body></html>"
+        ).encode("utf-8")
+        start_response(
+            "503 Service Unavailable",
+            [
+                ("Content-Type", "text/html; charset=utf-8"),
+                ("Content-Length", str(len(body))),
+                ("Retry-After", "1"),
+            ],
+        )
+        return [body]
+
+
+# Start Django development server
+def cmd_runserver(port: int, log: bool) -> None:
+    """Start the Django development server on the requested port."""
+
+    if log:
+        print(f"[ASLM-Code] Starting server on port {port}...")
+
+    import socket
+    from socketserver import ThreadingMixIn
+    from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
+
+    # Large file uploads (video, audio) require a much longer socket timeout than
+    # the default 30 s used by http.server.BaseHTTPRequestHandler.  Without this,
+    # the connection is torn down mid-transfer and the browser shows "Upload failed".
+    _UPLOAD_SOCKET_TIMEOUT_SECONDS = 3600
+
+    class ThreadedWSGIServer(ThreadingMixIn, WSGIServer):
+        """Serve local UI requests concurrently."""
+
+        daemon_threads = True
+
+        def get_request(self):
+            """Accept a connection and apply a generous timeout for large uploads."""
+            conn, addr = self.socket.accept()
+            conn.settimeout(_UPLOAD_SOCKET_TIMEOUT_SECONDS)
+            return conn, addr
+
+    class QuietWSGIRequestHandler(WSGIRequestHandler):
+        """Keep routine HTTP access logs out of the ASLM console."""
+
+        # Mirror the server-level timeout so BaseHTTPRequestHandler doesn't
+        # override it with a shorter value on its own.
+        timeout = _UPLOAD_SOCKET_TIMEOUT_SECONDS
+
+        def log_message(self, format: str, *args) -> None:
+            return
+
+    app = LazyDjangoApplication()
+    with make_server(
+        "127.0.0.1",
+        port,
+        app,
+        server_class=ThreadedWSGIServer,
+        handler_class=QuietWSGIRequestHandler,
+    ) as httpd:
+        app.load_in_background()
+        if log:
+            print(f"[ASLM-Code] UI server listening at http://127.0.0.1:{port}/", flush=True)
+        httpd.serve_forever()
+
+# Apply database migrations
+def cmd_migrate(log: bool) -> None:
+    """Apply all pending database migrations."""
+
+    if log:
+        print("[ASLM-Code] Applying migrations...")
+
+    run_django_command("migrate", "--noinput", log=log)
+
+# Create migration files
+def cmd_makemigrations(app: str | None, log: bool) -> None:
+    """Create migration files for changed models."""
+
+    args = ["makemigrations"]
+    if app:
+        args.append(app)
+
+    run_django_command(*args, log=log)
+
+# Collect static files
+def cmd_collectstatic(log: bool) -> None:
+    """Collect static files into ``STATIC_ROOT``."""
+
+    run_django_command("collectstatic", "--noinput", log=log)
+
+
+# Run first-time setup
+def cmd_first_run(
+    log: bool = True,
+    ui_port: int = 20010,
+    api_port: int = 20011,
+) -> None:
+    """Generate settings and apply initial migrations."""
+
+    from Settings.first_run import run as first_run
+
+    print("[ASLM-Code] Running first-run setup...")
+    first_run(log=log, ui_port=ui_port, api_port=api_port)
+
+    from Services import venv_manager
+
+    migrate_args = [os.path.abspath(__file__), "migrate"]
+    if log:
+        migrate_args.append("--log")
+
+    if not venv_manager.run_venv_python("server", migrate_args, log=log):
+        print("[ASLM-Code] Database migration failed inside server venv.")
+        sys.exit(1)
+
+# Read one runtime setting
+def cmd_get_setting(key: str) -> None:
+    """Print a single setting value for ASLM integration hooks."""
+
+    from Settings.settings import get
+
+    value = get(key)
+    print(value if value is not None else "")
+
+# Update one runtime setting
+def cmd_set_setting(key: str, value: str) -> None:
+    """Update a single setting key from string input."""
+
+    from Settings.settings import normalize_setting_value, set
+
+    parsed_value = normalize_setting_value(value)
+    set(key, parsed_value)
+    print(f"[ASLM-Code] Setting '{key}' updated to {parsed_value}")
+
+
+def cmd_apply_aslm_host_theme(theme_file: str) -> None:
+    """Apply a JSON theme snapshot written by ASLM (temp file path in ``--file``)."""
+
+    from pathlib import Path
+
+    from Settings.host_theme import save_host_theme_payload
+
+    path = Path(theme_file)
+    if not path.is_file():
+        print(f"Error: theme file not found: {theme_file}")
+        sys.exit(1)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: could not read theme file: {exc}")
+        sys.exit(1)
+    # .NET may write UTF-8 with BOM; json.loads rejects a leading U+FEFF unless stripped.
+    raw = raw.lstrip("\ufeff").strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"Error: invalid JSON in theme file: {exc}")
+        sys.exit(1)
+    if not isinstance(data, dict):
+        print("Error: host theme JSON must be an object.")
+        sys.exit(1)
+    save_host_theme_payload(data)
+    print("[ASLM-Code] Host theme snapshot updated.")
+
+
+def cmd_apply_aslm_locale(locale_file: str) -> None:
+    """Apply a JSON locale snapshot written by ASLM (temp file path in ``--file``)."""
+
+    from pathlib import Path
+
+    from Settings.host_locale import save_host_locale_payload
+
+    path = Path(locale_file)
+    if not path.is_file():
+        print(f"Error: locale file not found: {locale_file}")
+        sys.exit(1)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"Error: could not read locale file: {exc}")
+        sys.exit(1)
+    raw = raw.lstrip("\ufeff").strip()
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        print(f"Error: invalid JSON in locale file: {exc}")
+        sys.exit(1)
+    if not isinstance(data, dict):
+        print("Error: host locale JSON must be an object.")
+        sys.exit(1)
+    save_host_locale_payload(data)
+    print("[ASLM-Code] Host locale snapshot updated.")
+
+
+# Build CLI parser
+def _build_parser() -> argparse.ArgumentParser:
+    """Return the command-line parser for the project entry point."""
+
+    parser = argparse.ArgumentParser(
+        prog="main.py",
+        description="ASLM-Code management entry point",
+    )
+    parser.add_argument("command", type=str, help="Command to execute")
+    parser.add_argument("--port", type=int, default=20010, help="Port for runserver (default: 20010)")
+    parser.add_argument("--api-port", type=int, default=20011, help="API server port (default: 20011)")
+    parser.add_argument("--app", type=str, default=None, help="App name for makemigrations")
+    parser.add_argument("--key", type=str, default=None, help="Setting key for get_setting/set_setting")
+    parser.add_argument("--value", type=str, default=None, help="Setting value for set_setting")
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=None,
+        help="Path to JSON payload for apply_aslm_host_theme or apply_aslm_locale",
+    )
+    parser.add_argument("--log", action="store_true", help="Enable verbose output")
+    return parser
+
+# Print startup banner
+def _maybe_print_banner(command: str) -> None:
+    """Print technical module data once for interactive commands."""
+
+    if not os.environ.get("RUN_MAIN") and command not in {
+        "get_setting",
+        "set_setting",
+        "apply_aslm_host_theme",
+        "apply_aslm_locale",
+    }:
+        from Settings.console import PrintTechData
+
+        PrintTechData().PTD_Print()
+
+# Resolve runtime server port
+def _resolve_runserver_port(requested_port: int) -> int:
+    """Return the effective UI port for ``runserver``."""
+
+    from Settings.settings import load_settings
+
+    if requested_port != 20010:
+        return requested_port
+
+    env_port = os.environ.get("ASLM_UI_PORT")
+    if env_port:
+        try:
+            return int(env_port)
+        except ValueError:
+            pass
+
+    runtime_settings = load_settings()
+    return int(runtime_settings.get("ui-port", 20010))
+
+
+# Dispatch CLI command
+def main() -> None:
+    """Parse CLI arguments and dispatch the requested command."""
+
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    _maybe_reexec_in_server_venv(args.command)
+    _maybe_print_banner(args.command)
+
+    match args.command:
+        case "runserver":
+            port = _resolve_runserver_port(args.port)
+            cmd_runserver(port, log=args.log)
+
+        case "migrate":
+            cmd_migrate(args.log)
+
+        case "makemigrations":
+            cmd_makemigrations(args.app, args.log)
+
+        case "collectstatic":
+            cmd_collectstatic(args.log)
+
+        case "first_run":
+            cmd_first_run(log=True, ui_port=args.port, api_port=args.api_port)
+
+        case "get_setting":
+            if not args.key:
+                print("Error: --key argument is required.")
+                sys.exit(1)
+            cmd_get_setting(args.key)
+
+        case "set_setting":
+            if not args.key or args.value is None:
+                print("Error: --key and --value arguments are required.")
+                sys.exit(1)
+            cmd_set_setting(args.key, args.value)
+
+        case "apply_aslm_host_theme":
+            if not args.file:
+                print("Error: --file argument is required.")
+                sys.exit(1)
+            cmd_apply_aslm_host_theme(args.file)
+
+        case "apply_aslm_locale":
+            if not args.file:
+                print("Error: --file argument is required.")
+                sys.exit(1)
+            cmd_apply_aslm_locale(args.file)
+
+        case "help":
+            parser.print_help()
+
+        case _:
+            print(f"[ASLM-Code] Unknown command: '{args.command}'")
+            print("Run 'python main.py help' for usage.")
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

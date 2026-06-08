@@ -1,0 +1,326 @@
+/* Copyright NGGT.LightKeeper. All Rights Reserved. */
+
+/* Font faces */
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter/inter-latin-300-normal.woff2") format("woff2");
+  font-weight: 300;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter/inter-latin-400-normal.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter/inter-latin-500-normal.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter/inter-latin-600-normal.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter/inter-latin-700-normal.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* Theme tokens */
+:root {
+  /* HIG-aligned palette */
+  --c-system-blue: #0a84ff;
+  --c-system-green: #32d74b;
+  --c-system-indigo: #5e5ce6;
+  --c-system-orange: #ff9f0a;
+  --c-system-pink: #ff375f;
+  --c-system-purple: #bf5af2;
+  --c-system-red: #ff453a;
+  --c-system-teal: #64d2ff;
+  --c-system-yellow: #ffd60a;
+  --c-system-mint: #66d4cf;
+  --c-system-cyan: #64d2ff;
+
+  --c-gray-1: #8e8e93;
+  --c-gray-2: #636366;
+  --c-gray-3: #48484a;
+  --c-gray-4: #3a3a3c;
+  --c-gray-5: #2c2c2e;
+  --c-gray-6: #1c1c1e;
+
+  --c-bg: #111113;
+  --c-bg-surface: #1c1c1e;
+  --c-bg-elevated: #2c2c2e;
+
+  --c-text: #ffffff;
+  --c-text-muted: rgba(235, 235, 245, 0.6);
+  --c-text-dim: rgba(235, 235, 245, 0.3);
+  --c-text-quaternary: rgba(235, 235, 245, 0.18);
+  --c-text-placeholder: rgba(235, 235, 245, 0.3);
+
+  --c-border: #38383a;
+  --c-border-strong: var(--c-gray-4);
+  --c-link: #0984ff;
+  --c-overlay-blue: rgba(10, 132, 255, 0.12);
+  --c-overlay-blue-strong: rgba(10, 132, 255, 0.16);
+
+  --c-white: #ffffff;
+  --c-black: #000000;
+  --c-bg-error-overlay: #4c1f24;
+  --c-overlay-scrim: rgba(0, 0, 0, 0.25);
+
+  --c-primary: var(--c-system-blue);
+  --c-success: var(--c-system-green);
+  --c-danger: var(--c-system-red);
+  --c-warning: var(--c-system-orange);
+  --c-info: var(--c-system-teal);
+  --c-accent-secondary: var(--c-system-indigo);
+  --c-accent-tertiary: var(--c-system-purple);
+
+  --c-error: var(--c-danger);
+  --c-accent: var(--c-success);
+
+  --surface-primary: var(--c-bg);
+  --surface-secondary: var(--c-bg-surface);
+  --surface-tertiary: var(--c-bg-elevated);
+  --surface-hover: rgba(255, 255, 255, 0.06);
+  --surface-hover-strong: rgba(255, 255, 255, 0.1);
+  --surface-overlay: rgba(0, 0, 0, 0.65);
+  --surface-overlay-soft: rgba(0, 0, 0, 0.2);
+  --surface-blue-soft: rgba(10, 132, 255, 0.1);
+  --surface-purple-soft: rgba(191, 90, 242, 0.12);
+  --surface-purple-strong: rgba(191, 90, 242, 0.15);
+  --surface-green-soft: rgba(50, 215, 75, 0.08);
+  --surface-row-alt: rgba(255, 255, 255, 0.03);
+  --surface-elevated-soft: rgba(44, 44, 46, 0.8);
+  --surface-elevated-hover: rgba(58, 58, 60, 0.9);
+
+  --activity-card-bg: color-mix(in srgb, var(--c-text) 4.5%, transparent);
+  --activity-card-bg-hover: color-mix(in srgb, var(--c-text) 7%, transparent);
+  --activity-card-border: color-mix(in srgb, var(--c-text) 10.5%, transparent);
+  --activity-card-border-hover: color-mix(in srgb, var(--c-text) 16%, transparent);
+  --activity-card-shadow: 0 10px 26px color-mix(in srgb, var(--c-black) 14%, transparent);
+  --activity-card-inner-bg: color-mix(in srgb, var(--c-black) 18%, transparent);
+  --activity-card-inner-bg-strong: color-mix(in srgb, var(--c-black) 20%, transparent);
+  --activity-card-subtle-bg: color-mix(in srgb, var(--surface-secondary) 22%, transparent);
+  --activity-card-hover-subtle-bg: color-mix(in srgb, var(--surface-tertiary) 22%, transparent);
+  --activity-on-surface: var(--c-text);
+  --activity-on-surface-muted: color-mix(in srgb, var(--c-text) 72%, transparent);
+  --activity-on-surface-dim: color-mix(in srgb, var(--c-text) 54%, transparent);
+  --activity-status-bg: color-mix(in srgb, var(--c-text) 6%, transparent);
+  --activity-status-border: color-mix(in srgb, var(--c-text) 10%, transparent);
+  --activity-icon-bg: color-mix(in srgb, var(--surface-secondary) 94%, var(--c-text) 6%);
+  --activity-chip-bg: color-mix(in srgb, var(--c-text) 5.5%, transparent);
+  --activity-chip-bg-hover: color-mix(in srgb, var(--c-text) 8.5%, transparent);
+  --activity-icon-opacity: 0.76;
+  --activity-monochrome-svg-filter: none;
+  --activity-preview-action-bg: color-mix(in srgb, var(--surface-secondary) 86%, var(--c-primary) 14%);
+  --activity-preview-action-bg-hover: color-mix(in srgb, var(--surface-secondary) 76%, var(--c-primary) 24%);
+  --activity-preview-action-border: color-mix(in srgb, var(--c-primary) 34%, var(--c-text) 10%);
+  --activity-image-frame-bg: color-mix(in srgb, var(--surface-secondary) 94%, var(--c-text) 6%);
+  --activity-image-grid-tile: color-mix(in srgb, var(--c-text) 3.5%, transparent);
+  --activity-image-loader-glow: color-mix(in srgb, var(--c-primary) 24%, transparent);
+  --activity-media-track-bg: color-mix(in srgb, var(--c-text) 10%, transparent);
+  --activity-media-track-buffered: color-mix(in srgb, var(--c-text) 22%, transparent);
+  --activity-media-control-bg: color-mix(in srgb, var(--surface-secondary) 88%, var(--c-text) 12%);
+  --activity-media-control-bg-hover: color-mix(in srgb, var(--surface-secondary) 82%, var(--c-text) 18%);
+  --activity-media-control-border: color-mix(in srgb, var(--c-text) 14%, transparent);
+
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-soft: rgba(255, 255, 255, 0.15);
+  --border-strong-soft: rgba(255, 255, 255, 0.2);
+  --border-success: rgba(50, 215, 75, 0.4);
+  --focus-ring: rgba(10, 132, 255, 0.18);
+
+  --text-success: rgba(50, 215, 75, 0.85);
+  --text-soft: rgba(235, 235, 245, 0.7);
+  --text-soft-alt: rgba(235, 235, 245, 0.45);
+  --danger-hover: rgba(255, 69, 58, 0.85);
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-size-caption-2: 12px;
+  --font-size-caption-1: 13px;
+  --font-size-body-2: 15px;
+  --font-size-body-1: 17px;
+  --font-size-title-3: 20px;
+  --font-size-title-2: 22px;
+  --font-size-title-1: 28px;
+  --font-size-large-title: 34px;
+  --font-size-display: 60px;
+
+  /* Legacy aliases used across the frontend */
+  --text-xs: var(--font-size-caption-2);
+  --text-sm: var(--font-size-caption-1);
+  --text-md: var(--font-size-body-2);
+  --text-base: var(--font-size-body-1);
+  --text-lg: var(--font-size-title-3);
+  --text-xl: var(--font-size-title-2);
+  --text-2xl: var(--font-size-title-1);
+
+  --sidebar-w: 272px;
+  --sidebar-right-w: 288px;
+  --header-h: 56px;
+  --content-w: 1200px;
+  --composer-w: 760px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 16px;
+  --r-2xl: 20px;
+  --r-pill: 9999px;
+
+  --t-fast: 130ms ease;
+  --t-base: 220ms ease;
+  --t-slow: 360ms ease;
+}
+
+/* Global reset */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Base elements */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  font-size: var(--text-base);
+  background: var(--surface-primary);
+  color: var(--c-text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+html {
+  color-scheme: dark;
+  accent-color: var(--c-primary);
+}
+
+body {
+  min-height: 100%;
+}
+
+a {
+  color: var(--c-link);
+  text-decoration: none;
+  transition: color var(--t-fast);
+}
+
+a:hover {
+  color: var(--c-primary);
+}
+
+button {
+  font-family: var(--font);
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input,
+textarea,
+select {
+  font-family: var(--font);
+  font-size: var(--text-base);
+  color: var(--c-text);
+  background: none;
+  border: none;
+  outline: none;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: var(--r-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-gray-2);
+}
+
+/* Shared helpers */
+.truncate {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+/* RTL: mirror shell chrome; keep technical content LTR. */
+[dir="rtl"] .sidebar-left {
+  border-inline-end: 1px solid var(--c-border);
+  border-inline-start: none;
+}
+
+[dir="rtl"] .sidebar-right {
+  border-inline-start: 1px solid var(--c-border);
+  border-inline-end: none;
+}
+
+[dir="rtl"] .topbar,
+[dir="rtl"] .sidebar-header,
+[dir="rtl"] .setting-label,
+[dir="rtl"] .chat-item-body {
+  text-align: start;
+}
+
+[dir="rtl"] .msg.user {
+  flex-direction: row;
+}
+
+.bidi-ltr,
+pre,
+code,
+.hljs,
+.msg pre,
+.msg code,
+.tool-inspector-pre,
+.setting-input[type="text"],
+.setting-input[type="password"],
+.setting-input[type="number"] {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
