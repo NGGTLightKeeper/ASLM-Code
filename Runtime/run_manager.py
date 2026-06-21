@@ -10,7 +10,7 @@ from Runtime.backends.base import RunBackend, RunExecutor
 from Runtime.backends.thread_backend import ThreadRunBackend
 from Runtime.config.aggregator import ConfigAggregator
 from Runtime.event_log import EventLog
-from Runtime.executors.lms_direct_executor import execute_lms_direct
+from Runtime.executors.stub_executor import execute_stub
 from Runtime.types import RunEvent, RunInfo, RunSpec, RunStatus
 
 # How long one subscribe loop blocks while following a live run.
@@ -123,7 +123,7 @@ def get_run_manager() -> RunManager:
     global _manager
     with _manager_lock:
         if _manager is None:
-            # Direct LMS executor for local testing; swap for execute_aslm_chat
-            # once the ASLM host is available.
-            _manager = RunManager(executor=execute_lms_direct)
+            # The stub executor is swapped for the real ASLM-Chat executor later;
+            # the manager and backends do not change when that happens.
+            _manager = RunManager(executor=execute_stub)
         return _manager

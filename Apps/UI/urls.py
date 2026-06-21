@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from . import views
+from . import run_views, views
 
 
 # Register page routes and UI APIs.
@@ -27,6 +27,12 @@ urlpatterns = [
     path("api/uploads/", views.upload_files_api, name="uploads_api"),
     path("api/uploads/<str:file_id>/content/", views.uploaded_file_content_api, name="uploaded_file_content_api"),
     path("api/chat/abort/", views.abort_generation_api, name="abort_generation_api"),
+
+    # Background run daemon APIs.
+    path("api/run/start/", run_views.run_start_api, name="run_start_api"),
+    path("api/run/<str:run_id>/stream/", run_views.run_stream_api, name="run_stream_api"),
+    path("api/run/<str:run_id>/", run_views.run_info_api, name="run_info_api"),
+    path("api/run/<str:run_id>/abort/", run_views.run_abort_api, name="run_abort_api"),
     path("api/chat/<uuid:chat_id>/", views.load_chat_api, name="load_chat_api"),
     path("api/chat/<uuid:chat_id>/last/", views.delete_last_assistant_api, name="delete_last_assistant_api"),
     path("api/chat/<uuid:chat_id>/regenerate/", views.regenerate_chat_api, name="regenerate_chat_api"),
