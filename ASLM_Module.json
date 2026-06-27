@@ -3,7 +3,7 @@
     "id": "aslm-code",
     "name": "ASLM Code",
     "description": "ASLM Code Module - coding assistant UI with LLM inference delegated to ASLM-Chat",
-    "version": "0.1.0.0",
+    "version": "0.1.1.10",
     "author": "NGGT-ASLM",
     "type": "ui",
     "category": [
