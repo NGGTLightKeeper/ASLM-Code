@@ -200,7 +200,27 @@ Settings/host_locale.json
 MCP/mcp.json
 Data/
 !Apps/Data/
-!Docs/ASLM/content/docs/ASLM-Chat/Apps/Data/
+!Docs/ASLM/content/docs/ASLM-Code/Apps/Data/
+# Hugo landing-page data (collides with the case-insensitive `Data/` rule above).
+!Docs/ASLM/data/
+
+# Hugo documentation (Docs/ASLM)
+Docs/ASLM/assets/jsconfig.json
+Docs/ASLM/public/
+Docs/ASLM/resources/
+Docs/ASLM/hugo_stats.json
+Docs/ASLM/.hugo_build.lock
+Docs/ASLM/tmp/
+Docs/ASLM/cache/
+Docs/ASLM/_modules/
+Docs/ASLM/_vendor/
+Docs/ASLM/themes/github.com/
+Docs/ASLM/themes/gohugoio/
+Docs/ASLM/themes/hugo-mod-*/
+Docs/ASLM/go.work
+Docs/ASLM/go.work.sum
+!Docs/ASLM/go.mod
+!Docs/ASLM/go.sum
 
 # Tools (shared)
 pytest-cache-files-*/
